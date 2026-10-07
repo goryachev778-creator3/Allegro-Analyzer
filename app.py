@@ -197,7 +197,30 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 st.caption("Введите цены продажи и комиссии. Прокручивайте таблицу по вертикали и горизонтали; Shift + колесо прокручивает вбок. Можно добавить или удалить строки. Расчёты обновляются автоматически; выгрузка содержит текущий анализ.")
 config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
-edited = st.data_editor(st.session_state["products"], column_config={**config, **{c: st.column_config.TextColumn(c, width="medium") for c in ("Товар", "SKU", "Produkt", "Wariant")}, "_position_id": None}, disabled=[c for c in ("Produkt", "Wariant", "_position_id") if c in st.session_state["products"]], num_rows="dynamic", hide_index=True, height=600, width="stretch", key=f"editor_{st.session_state.get('editor_revision', 0)}")
+editor_frame = st.session_state["products"].drop(columns=["№"], errors="ignore").copy()
+if "Produkt" not in editor_frame:
+    editor_frame["Produkt"] = editor_frame["Товар"]
+if "Wariant" not in editor_frame:
+    editor_frame["Wariant"] = ""
+editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
+first_columns = ["№", "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %"]
+column_order = first_columns + [c for c in NUMERIC if c not in first_columns] + ["Товар", "SKU"]
+column_order += [c for c in editor_frame if c not in column_order and c != "_position_id"]
+config["№"] = st.column_config.NumberColumn("№", width=55, disabled=True, format="%d", pinned=True)
+config.update({c: st.column_config.TextColumn(c, width=150 if c == "Produkt" else 120) for c in ("Товар", "SKU", "Produkt", "Wariant")})
+for c in ("Закупка PLN", "Цена Allegro PLN", "Комиссия %"):
+    config[c] = st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width=140)
+edited = st.data_editor(
+    editor_frame, column_order=column_order,
+    column_config={**config, "_position_id": None},
+    disabled=["№", "Produkt", "Wariant", "_position_id"],
+    num_rows="dynamic", hide_index=True, height=600, width="stretch",
+    key=f"editor_{st.session_state.get('editor_revision', 0)}",
+).drop(columns=["№"])
+# Regenerate display numbers after additions/deletions without persisting them.
+if len(edited) != len(editor_frame):
+    if replace_analysis(edited.reset_index(drop=True)):
+        st.rerun()
 try:
     save_analysis(edited)
     save_indicator.success("Сохранено")

@@ -30,6 +30,7 @@ def test_editor_autosaves_reload_and_demo_confirmation():
     app.run()
     assert not app.exception
     assert load_analysis().iloc[0]['Цена Allegro PLN'] == 123
+    assert load_analysis().iloc[0]['Комиссия %'] == 17
     refreshed = AppTest.from_file(APP).run()
     assert not refreshed.exception
     assert refreshed.dataframe[0].value.iloc[0]['Цена Allegro PLN'] == 123
@@ -63,3 +64,22 @@ def test_table_height_zero_stock_and_exact_duplicates():
     assert not app.exception
     assert list(load_analysis()['Wariant']) == ['Red', 'Blue']
     assert len(app.dataframe[0].value) == 2
+
+
+def test_display_order_numbers_and_saved_values():
+    app = AppTest.from_file(APP).run()
+    app.button[0].click().run()
+    assert not app.exception
+    displayed = app.dataframe[0].value
+    assert list(displayed['№']) == [1, 2, 3]
+    assert list(displayed['Produkt']) == list(displayed['Товар'])
+    import json
+    order = list(app.dataframe[0].proto.column_order)
+    assert order[:6] == ['№', 'Produkt', 'Wariant', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
+    app.session_state['editor_1'] = {'edited_rows': {0: {'Цена Allegro PLN': 150.0, 'Комиссия %': 9.0}}, 'added_rows': [], 'deleted_rows': []}
+    app.run()
+    assert not app.exception
+    refreshed = AppTest.from_file(APP).run()
+    assert refreshed.dataframe[0].value.iloc[0]['Цена Allegro PLN'] == 150
+    assert refreshed.dataframe[0].value.iloc[0]['Комиссия %'] == 9
+    assert list(refreshed.dataframe[0].value['№']) == [1, 2, 3]
