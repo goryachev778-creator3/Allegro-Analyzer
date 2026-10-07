@@ -34,14 +34,14 @@ def write(key, value):
 
 def save_analysis(frame):
     # Empty cells remain empty; do not discard invalid edits before validation.
-    records = frame[INPUTS].astype(object).where(pd.notna(frame[INPUTS]), None).to_dict('records')
+    records = frame.astype(object).where(pd.notna(frame), None).to_dict('records')
     if read('analysis') != records:
         write('analysis', records)
 
 
 def load_analysis():
     records = read('analysis')
-    return None if records is None else pd.DataFrame(records, columns=INPUTS)
+    return None if records is None else pd.DataFrame(records) if records else pd.DataFrame(columns=INPUTS)
 
 
 def product_key(row):
@@ -52,23 +52,80 @@ def product_key(row):
     return ('sku', sku) if sku else ('name', name.casefold()) if name else None
 
 
-def merge_import(imported, saved):
-    """Keep every edited field for matching items; append genuinely new items.
+def text(value):
+    return '' if value is None or pd.isna(value) else str(value).strip()
 
-    Rows absent from a refreshed export are removed (including zero-stock rows).
-    Ambiguous duplicate identifiers are rejected rather than silently mixed.
+
+def identify_rows(raw, product_column, variant_column=None, source_id_column=None, stock_column=None):
+    """Assign IDs before stock filtering; retain exported identities on roundtrip.
+
+    Prefer a source row ID. Otherwise hash descriptive source columns; identical
+    source rows are distinguished by occurrence in source order.
     """
-    for frame in (imported, saved):
-        if frame is None:
-            continue
-        keys = [product_key(row) for _, row in frame.iterrows()]
-        nonempty = [key for key in keys if key is not None]
-        if len(nonempty) != len(set(nonempty)):
-            raise ValueError('Повторяющиеся SKU или названия без SKU: исправьте дубликаты перед объединением.')
+    result = raw.copy()
+    counts = {}
+    ignored = {stock_column, '_position_id', *INPUTS[2:]}
+    ignored.update(c for c in raw.columns if any(term in str(c).casefold() for term in
+                   ('cena', 'price', 'komis', 'commission', 'ilość', 'ilosc', 'quantity')))
+    ids = []
+    for _, row in raw.iterrows():
+        exported = text(row.get('_position_id'))
+        product = text(row[product_column])
+        variant = text(row[variant_column]) if variant_column else ''
+        source = text(row[source_id_column]) if source_id_column else ''
+        details = sorted((str(c), text(row[c])) for c in raw.columns if c not in ignored)
+        identity = [product, variant, source if source else details]
+        digest = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
+        occurrence = counts.get(digest, 0)
+        counts[digest] = occurrence + 1
+        ids.append(exported or f'{digest}:{occurrence}')
+    result['_position_id'] = ids
+    result['Produkt'] = raw[product_column].map(text)
+    result['Wariant'] = raw[variant_column].map(text) if variant_column else ''
+    return result
+
+
+def ensure_ids(frame):
+    if frame is None:
+        return None
+    result = frame.copy()
+    # Legacy analyses: retain SKU/name matching while allowing duplicate rows.
+    counts = {}
+    for index, row in result.iterrows():
+        existing = text(row.get('_position_id'))
+        key = json.dumps(product_key(row), ensure_ascii=False)
+        occurrence = counts.get(key, 0)
+        counts[key] = occurrence + 1
+        if not existing:
+            result.loc[index, '_position_id'] = f'legacy:{key}:{occurrence}'
+    return result
+
+
+def merge_import(imported, saved):
+    imported = ensure_ids(imported.reset_index(drop=True))
+    saved = ensure_ids(saved.reset_index(drop=True)) if saved is not None else None
     if saved is None or saved.empty:
-        return imported.copy().reset_index(drop=True)
-    existing = {product_key(row): row for _, row in saved.iterrows() if product_key(row) is not None}
-    return pd.DataFrame([existing.get(product_key(row), row).to_dict() for _, row in imported.iterrows()], columns=INPUTS).reset_index(drop=True)
+        return imported
+    existing = {text(row['_position_id']): row for _, row in saved.iterrows()}
+    legacy = {}
+    for _, row in saved.iterrows():
+        if text(row['_position_id']).startswith('legacy:'):
+            legacy.setdefault(product_key(row), []).append(row)
+    incoming_counts = {}
+    for _, row in imported.iterrows():
+        key = product_key(row)
+        incoming_counts[key] = incoming_counts.get(key, 0) + 1
+    records = []
+    for _, row in imported.iterrows():
+        old = existing.get(text(row['_position_id']))
+        candidates = legacy.get(product_key(row), [])
+        if old is None and len(candidates) == 1 and incoming_counts[product_key(row)] == 1:
+            old = candidates[0]
+        record = row.to_dict()
+        if old is not None:
+            record.update({column: old[column] for column in INPUTS})
+        records.append(record)
+    return pd.DataFrame(records, columns=imported.columns).reset_index(drop=True)
 
 
 def profile_key(filename, sheet, columns):
