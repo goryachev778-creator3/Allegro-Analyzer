@@ -1,11 +1,36 @@
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock
 from analyzer import INPUTS, NUMERIC, COLORS, calculate, export_excel, number, read_upload
 
 st.set_page_config(page_title="Allegro Analyzer", page_icon="📊", layout="wide")
 st.title("Allegro Analyzer")
 st.caption("От закупки в Китае до прибыли на Allegro · все расчёты на одну единицу товара")
+save_indicator = st.empty()
+try:
+    if "products" not in st.session_state:
+        restored = load_analysis()
+        if restored is not None:
+            st.session_state["products"] = restored
+    save_indicator.success("Сохранено")
+except Exception as exc:
+    save_indicator.error(f"Есть несохранённые изменения · хранилище недоступно: {exc}")
+    st.stop()
+
+
+def replace_analysis(frame):
+    try:
+        save_analysis(frame)
+    except Exception as exc:
+        save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
+        return False
+    st.session_state["products"] = frame.copy()
+    st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
+    st.session_state.pop("pending_action", None)
+    save_indicator.success("Сохранено")
+    return True
+
 with st.sidebar:
     st.header("Параметры анализа")
     weak = st.number_input("Порог выгодной маржи, %", 0.0, 100.0, 15.0, 1.0)
@@ -44,7 +69,9 @@ if upload:
         st.caption(f"Прочитано строк: {len(raw)}")
         with st.expander("Предпросмотр выгрузки", expanded=False):
             st.dataframe(raw.head(10), hide_index=True)
-        with st.form("mapping"):
+        profile = profile_key(upload.name, sheet, raw.columns)
+        preferences = read(profile) or {}
+        with st.form("mapping_" + profile):
             st.subheader("Сопоставление колонок")
             st.caption("Необязательные поля можно оставить пустыми: будут использованы значения по умолчанию. Закупку в валюте пересчитаем в PLN.")
             aliases = {
@@ -59,14 +86,24 @@ if upload:
             cols = st.columns(3)
             for i, field in enumerate(INPUTS):
                 match = next((c for c in raw.columns if str(c).strip().lower() in [field.lower()] + aliases.get(field, [])), None)
+                remembered = preferences.get("mapping", {}).get(field)
+                if remembered in options:
+                    match = remembered
                 with cols[i % 3]:
-                    mapping[field] = st.selectbox(field, options, index=options.index(match) if match else 0, key=f"map_{field}")
+                    mapping[field] = st.selectbox(field, options, index=options.index(match) if match else 0, key=f"{profile}_map_{field}")
                     if field in NUMERIC:
-                        defaults[field] = st.number_input(f"По умолчанию: {field}", min_value=0.0, value=0.0, key=f"default_{field}")
-            rate = st.number_input("Курс закупки: PLN за 1 единицу валюты (для PLN = 1)", min_value=0.000001, value=1.0, format="%.6f")
+                        defaults[field] = st.number_input(f"По умолчанию: {field}", min_value=0.0, value=float(preferences.get("defaults", {}).get(field, 0.0)), key=f"{profile}_default_{field}")
+            rate = st.number_input("Курс закупки: PLN за 1 единицу валюты (для PLN = 1)", min_value=0.000001, value=float(preferences.get("rate", 1.0)), format="%.6f", key=profile + "_rate")
             st.caption("Курс применяется только к закупке. Доставку и остальные расходы вводите в PLN.")
+            stock_match = next((c for c in raw.columns if str(c).strip().casefold() in ("ilość", "ilosc", "количество", "quantity")), None)
+            stock_match = preferences.get("stock", stock_match)
+            stock = st.selectbox("Остаток / Ilość (нулевые позиции исключаются)", options, index=options.index(stock_match) if stock_match in options else 0, key=profile + "_stock")
             apply = st.form_submit_button("Загрузить в таблицу", type="primary")
         if apply:
+            write(profile, {"mapping": mapping, "defaults": defaults, "rate": rate, "stock": stock})
+            raw, skipped = filter_stock(raw, None if stock == options[0] else stock)
+            if skipped:
+                st.info(f"Исключено позиций с нулевым остатком: {skipped}")
             if mapping["Товар"] == options[0]:
                 st.error("Выберите колонку с названием товара.")
             else:
@@ -92,17 +129,33 @@ if upload:
                 elif (frame["Комиссия %"] > 100).any():
                     st.error("Комиссия Allegro не может превышать 100%.")
                 else:
-                    st.session_state["products"] = frame
-                    st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
-                    st.success("Товары загружены. Можно редактировать расходы и цены ниже.")
+                    merged = merge_import(frame, load_analysis())
+                    if replace_analysis(merged):
+                        st.success("Товары загружены. Сохранённые поля существующих товаров сохранены; новые товары добавлены.")
     except Exception as exc:
         st.error(f"Не удалось прочитать файл: {exc}")
 
-if st.button("Открыть демонстрационный пример"):
-    st.session_state["products"] = sample.copy()
-    st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
+demo_col, reset_col = st.columns(2)
+if demo_col.button("Открыть демонстрационный пример"):
+    if "products" in st.session_state and not st.session_state["products"].empty:
+        st.session_state["pending_action"] = "demo"
+    else:
+        replace_analysis(sample)
+if reset_col.button("Сбросить текущий анализ"):
+    st.session_state["pending_action"] = "reset"
 
-if "products" not in st.session_state:
+pending = st.session_state.get("pending_action")
+if pending:
+    st.warning("Заменить текущий анализ демонстрационным примером?" if pending == "demo" else "Удалить все товары из текущего анализа? Это действие нельзя отменить.")
+    yes, no = st.columns(2)
+    if yes.button("Подтвердить замену" if pending == "demo" else "Подтвердить сброс"):
+        if replace_analysis(sample if pending == "demo" else pd.DataFrame(columns=INPUTS)):
+            st.rerun()
+    if no.button("Отмена"):
+        st.session_state.pop("pending_action", None)
+        st.rerun()
+
+if "products" not in st.session_state or st.session_state["products"].empty:
     st.info("Загрузите файл или откройте пример, чтобы начать анализ.")
     st.stop()
 
@@ -110,6 +163,11 @@ st.subheader("Товары и расходы")
 st.caption("Введите цены продажи и комиссии. Можно добавить или удалить строки. Расчёты обновляются автоматически; выгрузка содержит текущий анализ.")
 config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f") for c in NUMERIC}
 edited = st.data_editor(st.session_state["products"], column_config=config, num_rows="dynamic", hide_index=True, width="stretch", key=f"editor_{st.session_state.get('editor_revision', 0)}")
+try:
+    save_analysis(edited)
+    save_indicator.success("Сохранено")
+except Exception as exc:
+    save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
 if edited.empty:
     st.info("Добавьте хотя бы один товар.")
     st.stop()
@@ -137,4 +195,4 @@ def row_style(row):
     return [f"background-color: #{COLORS[row['Статус']]}; color: #172554" for _ in row]
 st.dataframe(visible[summary].style.apply(row_style, axis=1).format({c: "{:.2f}" for c in summary[3:]}, na_rep="—"), hide_index=True, width="stretch")
 st.download_button("Экспорт полного анализа в Excel", export_excel(result, weak), "allegro-analysis.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", help="Экспортируются все товары, включая скрытые фильтром, расходы и методика.")
-st.caption("Данные хранятся только в текущем сеансе. Скачайте Excel перед закрытием страницы; его можно импортировать снова.")
+st.caption("Изменения автоматически сохраняются в локальную SQLite и восстанавливаются после обновления страницы и перезапуска приложения. Это один общий рабочий анализ для этой установки; экспорт Excel сохраняет отдельную копию.")
