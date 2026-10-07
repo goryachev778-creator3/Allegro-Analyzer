@@ -173,10 +173,31 @@ if "products" not in st.session_state or st.session_state["products"].empty:
     st.info("Загрузите файл или откройте пример, чтобы начать анализ.")
     st.stop()
 
+def prepare_working_table(frame):
+    cleaned = frame.copy()
+    for column in ("Ilość", "ilosc", "Количество", "quantity"):
+        if column in cleaned:
+            cleaned = cleaned.loc[cleaned[column].map(number) != 0]
+    # Different variants or manually edited expenses are never collapsed.
+    visible_columns = [c for c in cleaned.columns if c != "_position_id"]
+    return cleaned.drop_duplicates(subset=visible_columns, keep="first").reset_index(drop=True)
+
+
+prepared = prepare_working_table(st.session_state["products"])
+if not prepared.equals(st.session_state["products"].reset_index(drop=True)):
+    if not replace_analysis(prepared):
+        st.stop()
+
 st.subheader("Товары и расходы")
-st.caption("Введите цены продажи и комиссии. Можно добавить или удалить строки. Расчёты обновляются автоматически; выгрузка содержит текущий анализ.")
-config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f") for c in NUMERIC}
-edited = st.data_editor(st.session_state["products"], column_config={**config, "_position_id": None}, disabled=[c for c in ("Produkt", "Wariant", "_position_id") if c in st.session_state["products"]], num_rows="dynamic", hide_index=True, width="stretch", key=f"editor_{st.session_state.get('editor_revision', 0)}")
+st.markdown("""<style>
+/* Keep native grid scrolling and prevent scroll chaining onto the page. */
+[data-testid="stDataFrame"] .dvn-scroller {
+    overscroll-behavior: contain;
+}
+</style>""", unsafe_allow_html=True)
+st.caption("Введите цены продажи и комиссии. Прокручивайте таблицу по вертикали и горизонтали; Shift + колесо прокручивает вбок. Можно добавить или удалить строки. Расчёты обновляются автоматически; выгрузка содержит текущий анализ.")
+config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
+edited = st.data_editor(st.session_state["products"], column_config={**config, **{c: st.column_config.TextColumn(c, width="medium") for c in ("Товар", "SKU", "Produkt", "Wariant")}, "_position_id": None}, disabled=[c for c in ("Produkt", "Wariant", "_position_id") if c in st.session_state["products"]], num_rows="dynamic", hide_index=True, height=600, width="stretch", key=f"editor_{st.session_state.get('editor_revision', 0)}")
 try:
     save_analysis(edited)
     save_indicator.success("Сохранено")

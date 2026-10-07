@@ -43,3 +43,23 @@ def test_editor_autosaves_reload_and_demo_confirmation():
     next(b for b in refreshed.button if b.label == 'Подтвердить сброс').click().run()
     assert not refreshed.exception
     assert load_analysis().empty
+
+
+def test_table_height_zero_stock_and_exact_duplicates():
+    import pandas as pd
+    from analyzer import INPUTS
+    from storage import save_analysis, load_analysis
+    rows = pd.DataFrame([
+        ['Item', 'same', 10, 0, 0, 0, 0, 0, 30, 10, 0],
+        ['Item', 'same', 10, 0, 0, 0, 0, 0, 30, 10, 0],
+        ['Item', 'same', 10, 0, 0, 0, 0, 0, 30, 10, 0],
+        ['Zero', 'zero', 10, 0, 0, 0, 0, 0, 30, 10, 0],
+    ], columns=INPUTS)
+    rows['Wariant'] = ['Red', 'Red', 'Blue', 'Red']
+    rows['_position_id'] = ['r1', 'r2', 'b1', 'z1']
+    rows['Ilość'] = [2, 2, 2, 0]
+    save_analysis(rows)
+    app = AppTest.from_file(APP).run()
+    assert not app.exception
+    assert list(load_analysis()['Wariant']) == ['Red', 'Blue']
+    assert len(app.dataframe[0].value) == 2
