@@ -1,4 +1,5 @@
 from io import BytesIO
+from komertia import columns as komertia_columns, apply_costs
 import pandas as pd
 import streamlit as st
 from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows
@@ -106,6 +107,10 @@ if upload:
             detected_id = next((c for c in raw.columns if str(c).strip().casefold() in ("id", "row id", "variant id", "id wariantu", "id pozycji")), None)
             remembered_id = preferences.get("row_id", detected_id)
             row_id = st.selectbox("Стабильный ID строки (если есть)", options, index=options.index(remembered_id) if remembered_id in options else 0, key=profile + "row_id")
+            detected_costs = komertia_columns(raw)
+            is_komertia = bool(detected_costs["quantity"] and detected_costs["total"])
+            use_komertia = st.checkbox("Полная себестоимость Komertia: Razem ÷ Ilość (расходы уже в PLN)", value=is_komertia, disabled=not is_komertia, key=profile + "komertia_costs")
+            st.caption("Этот режим обновляет закупку и расходы из Komertia, сохраняя введённые цены Allegro и комиссии. Tr.+Cło уже включает пошлину — повторно она не начисляется.")
             apply = st.form_submit_button("Загрузить в таблицу", type="primary")
         if apply:
             write(profile, {"mapping": mapping, "defaults": defaults, "rate": rate, "stock": stock, **identity_columns, "row_id": row_id})
@@ -138,12 +143,18 @@ if upload:
                     if metadata in raw:
                         frame[metadata] = raw[metadata]
                 frame["Закупка PLN"] *= rate
+                if use_komertia and not errors:
+                    frame = apply_costs(frame, raw)
                 if errors:
                     st.error("Исправьте данные перед импортом: " + "; ".join(errors[:10]))
                 elif (frame["Комиссия %"] > 100).any():
                     st.error("Комиссия Allegro не может превышать 100%.")
                 else:
                     merged = merge_import(frame, load_analysis())
+                    if use_komertia:
+                        for cost in NUMERIC:
+                            if cost not in ("Цена Allegro PLN", "Комиссия %", "Комиссия PLN"):
+                                merged[cost] = frame[cost].to_numpy()
                     if replace_analysis(merged):
                         st.success("Товары загружены. Сохранённые поля существующих товаров сохранены; новые товары добавлены.")
     except Exception as exc:
@@ -189,6 +200,7 @@ if not prepared.equals(st.session_state["products"].reset_index(drop=True)):
         st.stop()
 
 st.subheader("Товары и расходы")
+st.info("Закупка и расходы — на 1 штуку. Укажите цену продажи Allegro и комиссию: прибыль, маржа и ROI рассчитываются автоматически.")
 st.markdown("""<style>
 /* Keep native grid scrolling and prevent scroll chaining onto the page. */
 [data-testid="stDataFrame"] .dvn-scroller {
