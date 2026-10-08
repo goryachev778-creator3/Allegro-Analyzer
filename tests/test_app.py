@@ -7,7 +7,7 @@ APP = str(Path(__file__).resolve().parents[1] / 'app.py')
 def test_demo_workflow_and_margin_setting():
     app = AppTest.from_file(APP).run()
     assert not app.exception
-    app.button[0].click().run()
+    next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
     assert not app.exception
     assert [m.value for m in app.metric] == ['3', '1', '1', '0']
     assert len(app.dataframe) == 2
@@ -22,7 +22,7 @@ def test_demo_workflow_and_margin_setting():
 def test_editor_autosaves_reload_and_demo_confirmation():
     from storage import load_analysis
     app = AppTest.from_file(APP).run()
-    app.button[0].click().run()
+    next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
     app.session_state['editor_1'] = {
         'edited_rows': {0: {'Цена Allegro PLN': 123.0, 'Комиссия %': 17.0}},
         'added_rows': [], 'deleted_rows': [],
@@ -34,7 +34,7 @@ def test_editor_autosaves_reload_and_demo_confirmation():
     refreshed = AppTest.from_file(APP).run()
     assert not refreshed.exception
     assert refreshed.dataframe[0].value.iloc[0]['Цена Allegro PLN'] == 123
-    refreshed.button[0].click().run()
+    next(b for b in refreshed.button if b.label == 'Открыть демонстрационный пример').click().run()
     assert not refreshed.exception
     assert load_analysis().iloc[0]['Цена Allegro PLN'] == 123
     next(b for b in refreshed.button if b.label == 'Отмена').click().run()
@@ -68,7 +68,7 @@ def test_table_height_zero_stock_and_exact_duplicates():
 
 def test_display_order_numbers_and_saved_values():
     app = AppTest.from_file(APP).run()
-    app.button[0].click().run()
+    next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
     assert not app.exception
     displayed = app.dataframe[0].value
     assert list(displayed['№']) == [1, 2, 3]

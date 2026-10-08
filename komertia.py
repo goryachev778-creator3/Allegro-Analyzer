@@ -46,7 +46,8 @@ def migrate_screenshot_costs(frame):
         return frame
     from analyzer import number
     result = frame.copy()
-    eligible = result['_position_id'].fillna('').astype(str).str.startswith('komertia-screenshot-oct2026:')
+    from screenshot_catalog import load_catalog
+    eligible = result['_position_id'].isin(load_catalog()['_position_id']) | result['_position_id'].fillna('').astype(str).str.startswith('komertia-screenshot-oct2026:')
     migrated = result.get('_komertia_final_cost', result.index.to_series().map(lambda _: False)).eq(True)
     mask = eligible & ~migrated
     purchase = result.loc[mask, 'Закупка PLN'].map(number)

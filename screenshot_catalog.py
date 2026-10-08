@@ -17,5 +17,5 @@ def load_catalog():
     frame = apply_costs(frame, raw)
     for col in ('Produkt', 'Wariant', 'Ilość', 'source_row'):
         frame[col] = raw[col]
-    frame['_position_id'] = raw['source_row'].map(lambda n: f'komertia-screenshot-oct2026:{n}')
+    frame['_position_id'] = raw['position_id']
     return frame

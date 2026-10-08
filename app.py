@@ -3,13 +3,20 @@ from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs, migrate_screenshot_costs
 import pandas as pd
 import streamlit as st
-from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows
+from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
 from analyzer import INPUTS, NUMERIC, COLORS, calculate, export_excel, number, read_upload
 
 st.set_page_config(page_title="Allegro Analyzer", page_icon="📊", layout="wide")
 st.title("Allegro Analyzer")
 st.caption("От закупки в Китае до прибыли на Allegro · все расчёты на одну единицу товара")
 save_indicator = st.empty()
+
+def show_saved():
+    if is_external():
+        save_indicator.success("Сохранено во внешней базе")
+    else:
+        save_indicator.warning("Сохранено только локально. Защита от потери при новом деплое НЕ настроена. Скачайте резервную копию Excel; подключите ALLEGRO_DATABASE_URL в Secrets.")
+
 try:
     if "products" not in st.session_state:
         restored = load_analysis()
@@ -19,10 +26,11 @@ try:
         restored = migrated
         if restored is not None:
             st.session_state["products"] = restored
-    save_indicator.success("Сохранено")
+    show_saved()
 except Exception as exc:
     save_indicator.error(f"Есть несохранённые изменения · хранилище недоступно: {exc}")
-    st.stop()
+    if "products" not in st.session_state:
+        st.session_state["products"] = pd.DataFrame(columns=INPUTS)
 
 
 def replace_analysis(frame):
@@ -34,8 +42,19 @@ def replace_analysis(frame):
     st.session_state["products"] = frame.copy()
     st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
     st.session_state.pop("pending_action", None)
-    save_indicator.success("Сохранено")
+    show_saved()
     return True
+
+with st.expander("Восстановить данные из резервной копии Excel"):
+    backup_file = st.file_uploader("Резервная копия рабочего анализа", type=["xlsx"], key="restore_backup")
+    confirm_restore = st.checkbox("Заменить рабочий анализ данными резервной копии")
+    if st.button("Восстановить резервную копию", disabled=not backup_file or not confirm_restore):
+        try:
+            restored_backup = read_backup(backup_file.getvalue())
+            if replace_analysis(restored_backup):
+                st.rerun()
+        except Exception:
+            st.error("Не удалось восстановить копию. Проверьте формат файла и доступность хранилища.")
 
 with st.sidebar:
     st.header("Параметры анализа")
@@ -246,9 +265,10 @@ if len(edited) != len(editor_frame):
         st.rerun()
 try:
     save_analysis(edited)
-    save_indicator.success("Сохранено")
+    show_saved()
 except Exception as exc:
     save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
+st.download_button("Скачать резервную копию Excel", backup_excel(edited), "allegro-backup.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", help="Рабочие поля и постоянные идентификаторы. Позволяет восстановить цены и комиссии после пересборки.")
 if edited.empty:
     st.info("Добавьте хотя бы один товар.")
     st.stop()
@@ -278,4 +298,4 @@ def row_style(row):
     return [f"background-color: #{COLORS[row['Статус']]}; color: #172554" for _ in row]
 st.dataframe(visible[summary].style.apply(row_style, axis=1).format({c: "{:.2f}" for c in summary if c not in ("Товар", "SKU", "Wariant", "Статус")}, na_rep="—"), hide_index=True, width="stretch")
 st.download_button("Экспорт полного анализа в Excel", export_excel(result, weak), "allegro-analysis.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", help="Экспортируются все товары, включая скрытые фильтром, расходы и методика.")
-st.caption("Изменения автоматически сохраняются в локальную SQLite и восстанавливаются после обновления страницы и перезапуска приложения. Это один общий рабочий анализ для этой установки; экспорт Excel сохраняет отдельную копию.")
+st.caption("При настроенной внешней базе изменения сохраняются между деплоями. Локальная SQLite не гарантирует сохранность при пересборке. Изменения сохраняются в SQLite и восстанавливаются после обновления страницы и перезапуска приложения. Это один общий рабочий анализ для этой установки; экспорт Excel сохраняет отдельную копию.")

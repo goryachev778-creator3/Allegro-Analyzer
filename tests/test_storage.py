@@ -101,3 +101,39 @@ def test_identical_combination_and_stock_filter_have_stable_distinct_ids():
     second = identify_rows(raw, 'Produkt', 'Wariant', stock_column='Ilość')
     assert first['_position_id'].nunique() == 3
     assert list(filtered['_position_id']) == list(second['_position_id'].iloc[1:])
+
+
+def test_backup_prices_survive_reorder_cost_change_and_deleted_position():
+    from storage import backup_excel, read_backup
+    frame = products()
+    frame['_position_id'] = ['product-variant-001', 'product-variant-002']
+    frame['Цена Allegro PLN'] = [99, 44]
+    frame['Комиссия %'] = [11, 12]
+    save_analysis(frame)
+    restored = read_backup(backup_excel(frame))
+    assert restored.iloc[0]['Цена Allegro PLN'] == 99
+    save_analysis(frame.iloc[[1]])
+    imported = frame.iloc[::-1].copy()
+    imported['Закупка PLN'] = [7, 8]
+    imported['Цена Allegro PLN'] = 0
+    imported['Комиссия %'] = 0
+    merged = merge_import(imported, load_analysis())
+    assert list(merged['Цена Allegro PLN']) == [44, 99]
+    assert list(merged['Комиссия %']) == [12, 11]
+
+
+def test_identity_not_changed_by_komertia_cost_update():
+    from storage import identify_rows
+    raw = pd.DataFrame({'Produkt': ['Item'], 'Wariant': ['Red'], 'Wartość': [100], 'Razem': [150], 'Tr.+Cło': [30], 'Ilość': [10]})
+    first = identify_rows(raw, 'Produkt', 'Wariant', stock_column='Ilość')
+    raw['Wartość'], raw['Razem'], raw['Tr.+Cło'] = 200, 250, 40
+    second = identify_rows(raw, 'Produkt', 'Wariant', stock_column='Ilość')
+    assert first.iloc[0]['_position_id'] == second.iloc[0]['_position_id']
+
+
+def test_external_failure_no_local_fallback(monkeypatch):
+    from storage import database_path
+    monkeypatch.setenv('ALLEGRO_DATABASE_URL', 'postgresql://invalid:invalid@127.0.0.1:1/db?sslmode=require')
+    with pytest.raises(RuntimeError, match='Внешняя база недоступна'):
+        save_analysis(products())
+    assert not database_path().exists()

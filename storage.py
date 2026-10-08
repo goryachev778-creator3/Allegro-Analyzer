@@ -20,28 +20,136 @@ def connect():
     return db
 
 
-def read(key):
-    with connect() as db:
-        row = db.execute('SELECT value FROM state WHERE key = ?', (key,)).fetchone()
+def external_url():
+    value = os.environ.get('ALLEGRO_DATABASE_URL')
+    if not value:
+        try:
+            import streamlit as st
+            value = st.secrets.get('ALLEGRO_DATABASE_URL')
+        except (FileNotFoundError, KeyError):
+            pass
+    return value
+
+
+def is_external():
+    return bool(external_url())
+
+
+def state_connection():
+    if not external_url():
+        return connect()
+    try:
+        import psycopg
+        from psycopg.conninfo import conninfo_to_dict
+        settings = conninfo_to_dict(external_url())
+        if settings.get('sslmode') in ('disable', 'allow', 'prefer'):
+            raise ValueError('TLS required')
+        settings.setdefault('sslmode', 'require')
+        db = psycopg.connect(**settings, connect_timeout=10)
+        db.execute('CREATE TABLE IF NOT EXISTS allegro_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        return db
+    except Exception:
+        raise RuntimeError('Внешняя база недоступна. Автосохранение не выполнено. Проверьте ALLEGRO_DATABASE_URL в Secrets.') from None
+
+
+def read_from(db, key):
+    table = 'allegro_state' if is_external() else 'state'
+    placeholder = '%s' if is_external() else '?'
+    row = db.execute(f'SELECT value FROM {table} WHERE key = {placeholder}', (key,)).fetchone()
     return json.loads(row[0]) if row else None
 
 
-def write(key, value):
+def write_to(db, key, value):
     payload = json.dumps(value, ensure_ascii=False, allow_nan=False)
-    with connect() as db:
-        db.execute('INSERT INTO state VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', (key, payload))
+    table = 'allegro_state' if is_external() else 'state'
+    placeholders = '%s, %s' if is_external() else '?, ?'
+    db.execute(f'INSERT INTO {table} VALUES ({placeholders}) ON CONFLICT(key) DO UPDATE SET value = excluded.value', (key, payload))
+
+
+def read(key):
+    db = state_connection()
+    try:
+        with db:
+            return read_from(db, key)
+    finally:
+        db.close()
+
+
+def write(key, value):
+    db = state_connection()
+    try:
+        with db:
+            write_to(db, key, value)
+    finally:
+        db.close()
+
+
+SALES = ['Цена Allegro PLN', 'Комиссия %', 'Комиссия PLN']
 
 
 def save_analysis(frame):
-    # Empty cells remain empty; do not discard invalid edits before validation.
+    frame = ensure_ids(frame.reset_index(drop=True))
     records = frame.astype(object).where(pd.notna(frame), None).to_dict('records')
-    if read('analysis') != records:
-        write('analysis', records)
+    db = state_connection()
+    try:
+        with db:
+            prices = {canonical_id(k): v for k, v in (read_from(db, 'prices') or {}).items()}
+            for row in records:
+                prices[row['_position_id']] = {c: row[c] for c in SALES}
+            write_to(db, 'prices', prices)
+            write_to(db, 'analysis', records)
+    finally:
+        db.close()
 
 
 def load_analysis():
     records = read('analysis')
-    return None if records is None else pd.DataFrame(records) if records else pd.DataFrame(columns=INPUTS)
+    if records is None and is_external() and database_path().exists():
+        local = sqlite3.connect(database_path())
+        try:
+            entry = local.execute("SELECT value FROM state WHERE key = 'analysis'").fetchone()
+        finally:
+            local.close()
+        if entry:
+            records = json.loads(entry[0])
+            save_analysis(pd.DataFrame(records) if records else pd.DataFrame(columns=INPUTS))
+    return None if records is None else ensure_ids(pd.DataFrame(records)) if records else pd.DataFrame(columns=INPUTS)
+
+
+def restore_prices(frame):
+    result = ensure_ids(frame.reset_index(drop=True))
+    prices = {canonical_id(k): v for k, v in (read('prices') or {}).items()}
+    for index, row in result.iterrows():
+        if row['_position_id'] in prices:
+            for col, value in prices[row['_position_id']].items():
+                result.loc[index, col] = value
+    return result
+
+
+def backup_excel(frame):
+    from io import BytesIO
+    stream = BytesIO()
+    records = ensure_ids(frame.reset_index(drop=True))
+    with pd.ExcelWriter(stream, engine='openpyxl') as writer:
+        records.to_excel(writer, sheet_name='Рабочие данные', index=False)
+        for row in writer.sheets['Рабочие данные']:
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = 's'
+    return stream.getvalue()
+
+
+def read_backup(data):
+    from io import BytesIO
+    from analyzer import calculate
+    frame = pd.read_excel(BytesIO(data), sheet_name='Рабочие данные', dtype={'SKU': str, '_position_id': str}).fillna({'SKU': '', 'Товар': '', 'Produkt': '', 'Wariant': ''})
+    if not set(INPUTS + ['_position_id']).issubset(frame.columns):
+        raise ValueError('В резервной копии отсутствуют поля или идентификаторы позиций.')
+    if frame['_position_id'].isna().any() or frame['_position_id'].duplicated().any():
+        raise ValueError('Идентификаторы резервной копии должны быть заполнены и уникальны.')
+    if not frame.empty:
+        calculate(frame)
+    return frame
 
 
 def product_key(row):
@@ -65,6 +173,8 @@ def identify_rows(raw, product_column, variant_column=None, source_id_column=Non
     result = raw.copy()
     counts = {}
     ignored = {stock_column, '_position_id', *INPUTS[2:]}
+    from komertia import normalize
+    ignored.update(c for c in raw.columns if normalize(c) in ('wartosc', 'razem', 'trclo', 'transportclo', 'odprawahs', 'hsodprawa', 'kosztydod', 'kosztdod', '1platnosc', '2platnosc', 'waga', 'objetosc'))
     ignored.update(c for c in raw.columns if any(term in str(c).casefold() for term in
                    ('cena', 'price', 'komis', 'commission', 'ilość', 'ilosc', 'quantity')))
     ids = []
@@ -85,6 +195,14 @@ def identify_rows(raw, product_column, variant_column=None, source_id_column=Non
     return result
 
 
+def canonical_id(value):
+    if text(value).startswith('komertia-screenshot-oct2026:'):
+        payload = json.loads((Path(__file__).parent / 'assets' / 'komertia-screenshots.json').read_text())
+        migration = {f"komertia-screenshot-oct2026:{r['source_row']}": r['position_id'] for r in payload['rows']}
+        return migration.get(value, value)
+    return value
+
+
 def ensure_ids(frame):
     if frame is None:
         return None
@@ -93,6 +211,8 @@ def ensure_ids(frame):
     counts = {}
     for index, row in result.iterrows():
         existing = text(row.get('_position_id'))
+        if existing:
+            result.loc[index, '_position_id'] = canonical_id(existing)
         key = json.dumps(product_key(row), ensure_ascii=False)
         occurrence = counts.get(key, 0)
         counts[key] = occurrence + 1
@@ -105,7 +225,7 @@ def merge_import(imported, saved):
     imported = ensure_ids(imported.reset_index(drop=True))
     saved = ensure_ids(saved.reset_index(drop=True)) if saved is not None else None
     if saved is None or saved.empty:
-        return imported
+        return restore_prices(imported)
     existing = {text(row['_position_id']): row for _, row in saved.iterrows()}
     legacy = {}
     for _, row in saved.iterrows():
@@ -125,7 +245,7 @@ def merge_import(imported, saved):
         if old is not None:
             record.update({column: old[column] for column in INPUTS})
         records.append(record)
-    return pd.DataFrame(records, columns=imported.columns).reset_index(drop=True)
+    return restore_prices(pd.DataFrame(records, columns=imported.columns).reset_index(drop=True))
 
 
 def profile_key(filename, sheet, columns):
