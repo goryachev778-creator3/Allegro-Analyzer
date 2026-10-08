@@ -1,6 +1,7 @@
 from io import BytesIO
+from product_details import PHOTO, FULL_NAME, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
 from screenshot_catalog import load_catalog
-from komertia import columns as komertia_columns, apply_costs, migrate_screenshot_costs
+from komertia import columns as komertia_columns, apply_costs
 import pandas as pd
 import streamlit as st
 from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
@@ -20,7 +21,7 @@ def show_saved():
 try:
     if "products" not in st.session_state:
         restored = load_analysis()
-        migrated = migrate_screenshot_costs(restored)
+        migrated = enrich_details(restored)
         if restored is not None and not migrated.equals(restored):
             save_analysis(migrated)
         restored = migrated
@@ -118,6 +119,13 @@ if upload:
                     mapping[field] = st.selectbox(field, options, index=options.index(match) if match else 0, key=f"{profile}_map_{field}")
                     if field in NUMERIC:
                         defaults[field] = st.number_input(f"По умолчанию: {field}", min_value=0.0, value=float(preferences.get("defaults", {}).get(field, 0.0)), key=f"{profile}_default_{field}")
+            for field in DETAILS:
+                match = next((c for c in raw.columns if str(c).strip().casefold() in [a.casefold() for a in ALIASES[field]]), None)
+                remembered = preferences.get("mapping", {}).get(field)
+                if remembered in options:
+                    match = remembered
+                mapping[field] = st.selectbox(field + " · исходная колонка", options, index=options.index(match) if match else 0, key=profile + field)
+            st.caption("Укажите только оригинальные фото и полные названия Komertia. Сокращённые названия не дополняются автоматически.")
             rate = st.number_input("Курс закупки: PLN за 1 единицу валюты (для PLN = 1)", min_value=0.000001, value=float(preferences.get("rate", 1.0)), format="%.6f", key=profile + "_rate")
             st.caption("Курс применяется только к закупке. Доставку и остальные расходы вводите в PLN.")
             stock_match = next((c for c in raw.columns if str(c).strip().casefold() in ("ilość", "ilosc", "количество", "quantity")), None)
@@ -166,6 +174,7 @@ if upload:
                 for metadata in ("Produkt", "Wariant", "_position_id"):
                     if metadata in raw:
                         frame[metadata] = raw[metadata]
+                frame = import_details(frame, raw, mapping)
                 frame["Закупка PLN"] *= rate
                 if use_komertia and not errors:
                     frame = apply_costs(frame, raw)
@@ -214,21 +223,6 @@ if "products" not in st.session_state or st.session_state["products"].empty:
     st.info("Загрузите файл или откройте пример, чтобы начать анализ.")
     st.stop()
 
-def prepare_working_table(frame):
-    cleaned = frame.copy()
-    for column in ("Ilość", "ilosc", "Количество", "quantity"):
-        if column in cleaned:
-            cleaned = cleaned.loc[cleaned[column].map(number) != 0]
-    # Different variants or manually edited expenses are never collapsed.
-    visible_columns = [c for c in cleaned.columns if c not in ("_position_id", "_komertia_final_cost")]
-    return cleaned.drop_duplicates(subset=visible_columns, keep="first").reset_index(drop=True)
-
-
-prepared = prepare_working_table(st.session_state["products"])
-if not prepared.equals(st.session_state["products"].reset_index(drop=True)):
-    if not replace_analysis(prepared):
-        st.stop()
-
 st.subheader("Товары и расходы")
 st.info("Закупка и расходы — на 1 штуку. Укажите цену продажи Allegro и комиссию: прибыль, маржа и ROI рассчитываются автоматически.")
 st.markdown("""<style>
@@ -239,23 +233,25 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 st.caption("Введите цены продажи и комиссии. Прокручивайте таблицу по вертикали и горизонтали; Shift + колесо прокручивает вбок. Можно добавить или удалить строки. Расчёты обновляются автоматически; выгрузка содержит текущий анализ.")
 config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
-editor_frame = st.session_state["products"].drop(columns=["№"], errors="ignore").copy()
+editor_frame = enrich_details(st.session_state["products"]).drop(columns=["№"], errors="ignore").copy()
 if "Produkt" not in editor_frame:
     editor_frame["Produkt"] = editor_frame["Товар"]
 if "Wariant" not in editor_frame:
     editor_frame["Wariant"] = ""
 editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
-first_columns = ["№", "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %"]
+first_columns = ["№", PHOTO, FULL_NAME, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %"]
 column_order = first_columns + [c for c in NUMERIC if c not in first_columns] + ["Товар", "SKU"]
 column_order += [c for c in editor_frame if c not in column_order and c not in ("_position_id", "_komertia_final_cost")]
 config["№"] = st.column_config.NumberColumn("№", width=55, disabled=True, format="%d", pinned=True)
+config[PHOTO] = st.column_config.ImageColumn(PHOTO, width="medium")
+config[FULL_NAME] = st.column_config.TextColumn(FULL_NAME, width="large")
 config.update({c: st.column_config.TextColumn(c, width=150 if c == "Produkt" else 120) for c in ("Товар", "SKU", "Produkt", "Wariant")})
 for c in ("Закупка PLN", "Цена Allegro PLN", "Комиссия %"):
     config[c] = st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width=140)
 edited = st.data_editor(
     editor_frame, column_order=column_order,
     column_config={**config, "_position_id": None, "_komertia_final_cost": None},
-    disabled=["№", "Produkt", "Wariant", "_position_id"],
+    disabled=["№", PHOTO, "Produkt", "Wariant", "_position_id"],
     num_rows="dynamic", hide_index=True, height=600, width="stretch",
     key=f"editor_{st.session_state.get('editor_revision', 0)}",
 ).drop(columns=["№"])
@@ -265,9 +261,41 @@ if len(edited) != len(editor_frame):
         st.rerun()
 try:
     save_analysis(edited)
+    st.session_state["products"] = edited.copy()
     show_saved()
 except Exception as exc:
     save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
+st.markdown("""<style>
+.komertia-table {overflow-x:auto; max-height:650px; overflow-y:auto;}
+.komertia-table table {border-collapse:collapse; width:100%;}
+.komertia-table th,.komertia-table td {padding:10px; border:1px solid #8885; text-align:left; vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; min-width:120px;}
+.komertia-table img {width:100px; height:100px; object-fit:contain;}
+</style>""", unsafe_allow_html=True)
+st.subheader("Полные данные товаров Komertia")
+st.caption("Названия и варианты показаны целиком, как в источнике. Многоточие в исходном скриншоте означает, что продолжение отсутствует. Пустые фото и полные названия можно заполнить вручную ниже.")
+st.markdown(full_table(edited.assign(**{"№": range(1, len(edited) + 1)}), ["№", PHOTO, FULL_NAME, "Produkt", "Wariant"]), unsafe_allow_html=True)
+if not edited.empty:
+    with st.expander("Добавить фото или полное название Komertia вручную"):
+        from storage import ensure_ids
+        detail_frame = ensure_ids(edited)
+        positions = list(detail_frame['_position_id'])
+        labels = {row['_position_id']: f"{i + 1}. {row.get('Produkt', row['Товар'])} · {row.get('Wariant', '')}" for i, row in detail_frame.iterrows()}
+        selected = st.selectbox("Товар и вариант", positions, format_func=lambda item: labels[item], key="detail_position")
+        row_index = positions.index(selected)
+        row = detail_frame.iloc[row_index]
+        with st.form("details_" + selected + "_" + str(st.session_state.get("editor_revision", 0))):
+            name = st.text_area(FULL_NAME, value=row[FULL_NAME], help="Вставьте оригинальное полное название. Пустое поле остаётся пустым.")
+            photo = st.file_uploader(PHOTO, type=["png", "jpg", "jpeg", "webp"], help="Оригинальное фото до 5 МБ; хранится вместе с товаром в существующей базе.")
+            save_details = st.form_submit_button("Сохранить фото и название")
+        if save_details:
+            try:
+                detail_frame.loc[row_index, FULL_NAME] = name
+                if photo is not None:
+                    detail_frame.loc[row_index, PHOTO] = uploaded_photo(photo.getvalue())
+                if replace_analysis(detail_frame):
+                    st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
 st.download_button("Скачать резервную копию Excel", backup_excel(edited), "allegro-backup.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", help="Рабочие поля и постоянные идентификаторы. Позволяет восстановить цены и комиссии после пересборки.")
 if edited.empty:
     st.info("Добавьте хотя бы один товар.")
@@ -290,12 +318,12 @@ search = left.text_input("Поиск по названию или SKU")
 statuses = right.multiselect("Статус", list(COLORS), default=list(COLORS))
 visible = result[result["Статус"].isin(statuses)]
 if search:
-    visible = visible[visible["Товар"].str.contains(search, case=False, regex=False, na=False) | visible["SKU"].str.contains(search, case=False, regex=False, na=False)]
+    visible = visible[visible["Товар"].str.contains(search, case=False, regex=False, na=False) | visible["SKU"].str.contains(search, case=False, regex=False, na=False) | visible[FULL_NAME].str.contains(search, case=False, regex=False, na=False) | visible["Wariant"].str.contains(search, case=False, regex=False, na=False)]
 summary = ["Товар", "SKU", "Статус", "Себестоимость PLN", "Цена Allegro PLN", "Комиссия всего PLN", "Прибыль PLN", "Маржа %", "ROI %"]
-if "Wariant" in visible:
-    summary.insert(2, "Wariant")
+summary = [PHOTO, FULL_NAME, "Produkt", "Wariant"] + summary
+summary = [c for c in summary if c in visible]
 def row_style(row):
     return [f"background-color: #{COLORS[row['Статус']]}; color: #172554" for _ in row]
-st.dataframe(visible[summary].style.apply(row_style, axis=1).format({c: "{:.2f}" for c in summary if c not in ("Товар", "SKU", "Wariant", "Статус")}, na_rep="—"), hide_index=True, width="stretch")
+st.markdown(full_table(visible, summary), unsafe_allow_html=True)
 st.download_button("Экспорт полного анализа в Excel", export_excel(result, weak), "allegro-analysis.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", help="Экспортируются все товары, включая скрытые фильтром, расходы и методика.")
 st.caption("При настроенной внешней базе изменения сохраняются между деплоями. Локальная SQLite не гарантирует сохранность при пересборке. Изменения сохраняются в SQLite и восстанавливаются после обновления страницы и перезапуска приложения. Это один общий рабочий анализ для этой установки; экспорт Excel сохраняет отдельную копию.")

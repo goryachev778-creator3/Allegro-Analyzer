@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 from analyzer import INPUTS
+from product_details import DETAILS, enrich_details
 
 
 def database_path():
@@ -131,7 +132,8 @@ def backup_excel(frame):
     stream = BytesIO()
     records = ensure_ids(frame.reset_index(drop=True))
     with pd.ExcelWriter(stream, engine='openpyxl') as writer:
-        records.to_excel(writer, sheet_name='Рабочие данные', index=False)
+        from product_details import excel_details
+        excel_details(records, writer, 'Рабочие данные')
         for row in writer.sheets['Рабочие данные']:
             for cell in row:
                 if isinstance(cell.value, str):
@@ -143,6 +145,14 @@ def read_backup(data):
     from io import BytesIO
     from analyzer import calculate
     frame = pd.read_excel(BytesIO(data), sheet_name='Рабочие данные', dtype={'SKU': str, '_position_id': str}).fillna({'SKU': '', 'Товар': '', 'Produkt': '', 'Wariant': ''})
+    from product_details import PHOTO
+    frame = enrich_details(frame)
+    workbook = pd.ExcelFile(BytesIO(data))
+    if 'Фото данные' in workbook.sheet_names:
+        chunks = pd.read_excel(workbook, sheet_name='Фото данные')
+        for row, parts in chunks.groupby('row'):
+            frame.loc[int(row), PHOTO] = ''.join(parts.sort_values('part')['data'])
+    frame = enrich_details(frame)
     if not set(INPUTS + ['_position_id']).issubset(frame.columns):
         raise ValueError('В резервной копии отсутствуют поля или идентификаторы позиций.')
     if frame['_position_id'].isna().any() or frame['_position_id'].duplicated().any():
@@ -172,7 +182,9 @@ def identify_rows(raw, product_column, variant_column=None, source_id_column=Non
     """
     result = raw.copy()
     counts = {}
+    from product_details import ALIASES
     ignored = {stock_column, '_position_id', *INPUTS[2:]}
+    ignored.update(c for c in raw.columns if str(c).strip().casefold() in {a.casefold() for aliases in ALIASES.values() for a in aliases})
     from komertia import normalize
     ignored.update(c for c in raw.columns if normalize(c) in ('wartosc', 'razem', 'trclo', 'transportclo', 'odprawahs', 'hsodprawa', 'kosztydod', 'kosztdod', '1platnosc', '2platnosc', 'waga', 'objetosc'))
     ignored.update(c for c in raw.columns if any(term in str(c).casefold() for term in
@@ -222,7 +234,7 @@ def ensure_ids(frame):
 
 
 def merge_import(imported, saved):
-    imported = ensure_ids(imported.reset_index(drop=True))
+    imported = enrich_details(ensure_ids(imported.reset_index(drop=True)))
     saved = ensure_ids(saved.reset_index(drop=True)) if saved is not None else None
     if saved is None or saved.empty:
         return restore_prices(imported)
@@ -244,6 +256,9 @@ def merge_import(imported, saved):
         record = row.to_dict()
         if old is not None:
             record.update({column: old[column] for column in INPUTS})
+            for column in DETAILS:
+                if text(old.get(column)):
+                    record[column] = old[column]
         records.append(record)
     return restore_prices(pd.DataFrame(records, columns=imported.columns).reset_index(drop=True))
 

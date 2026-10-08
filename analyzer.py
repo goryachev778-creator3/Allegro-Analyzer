@@ -71,7 +71,8 @@ COLORS = {"Выгодный": "DCFCE7", "Слабая прибыль": "FEF3C7",
 def export_excel(result, weak_margin=15):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        result.to_excel(writer, sheet_name="Анализ", index=False)
+        from product_details import excel_details
+        excel_details(result, writer, "Анализ")
         ws = writer.sheets["Анализ"]
         ws.freeze_panes = "C2"
         ws.auto_filter.ref = ws.dimensions

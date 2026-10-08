@@ -10,13 +10,14 @@ def test_demo_workflow_and_margin_setting():
     next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
     assert not app.exception
     assert [m.value for m in app.metric] == ['3', '1', '1', '0']
-    assert len(app.dataframe) == 2
+    assert len(app.dataframe) == 1
     app.sidebar.number_input[0].set_value(40.0).run()
     assert not app.exception
     assert app.metric[1].value == '0'
     app.text_input[0].set_value('ORG-01').run()
     assert not app.exception
-    assert len(app.dataframe[1].value) == 1
+    table = next(m.value for m in reversed(app.markdown) if '<thead>' in m.value)
+    assert 'ORG-01' in table and 'LAMP-02' not in table
 
 
 def test_editor_autosaves_reload_and_demo_confirmation():
@@ -46,7 +47,7 @@ def test_editor_autosaves_reload_and_demo_confirmation():
     assert load_analysis().empty
 
 
-def test_table_height_zero_stock_and_exact_duplicates():
+def test_opening_preserves_all_existing_rows_and_ids():
     import pandas as pd
     from analyzer import INPUTS
     from storage import save_analysis, load_analysis
@@ -62,8 +63,8 @@ def test_table_height_zero_stock_and_exact_duplicates():
     save_analysis(rows)
     app = AppTest.from_file(APP).run()
     assert not app.exception
-    assert list(load_analysis()['Wariant']) == ['Red', 'Blue']
-    assert len(app.dataframe[0].value) == 2
+    assert list(load_analysis()['_position_id']) == ['r1', 'r2', 'b1', 'z1']
+    assert len(app.dataframe[0].value) == 4
 
 
 def test_display_order_numbers_and_saved_values():
@@ -75,7 +76,7 @@ def test_display_order_numbers_and_saved_values():
     assert list(displayed['Produkt']) == list(displayed['Товар'])
     import json
     order = list(app.dataframe[0].proto.column_order)
-    assert order[:6] == ['№', 'Produkt', 'Wariant', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
+    assert order[:8] == ['№', 'Фото Komertia', 'Полное название Komertia', 'Produkt', 'Wariant', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
     app.session_state['editor_1'] = {'edited_rows': {0: {'Цена Allegro PLN': 150.0, 'Комиссия %': 9.0}}, 'added_rows': [], 'deleted_rows': []}
     app.run()
     assert not app.exception
