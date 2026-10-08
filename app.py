@@ -1,6 +1,6 @@
 from io import BytesIO
 from screenshot_catalog import load_catalog
-from komertia import columns as komertia_columns, apply_costs
+from komertia import columns as komertia_columns, apply_costs, migrate_screenshot_costs
 import pandas as pd
 import streamlit as st
 from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows
@@ -13,6 +13,10 @@ save_indicator = st.empty()
 try:
     if "products" not in st.session_state:
         restored = load_analysis()
+        migrated = migrate_screenshot_costs(restored)
+        if restored is not None and not migrated.equals(restored):
+            save_analysis(migrated)
+        restored = migrated
         if restored is not None:
             st.session_state["products"] = restored
     save_indicator.success("Сохранено")
@@ -109,9 +113,9 @@ if upload:
             remembered_id = preferences.get("row_id", detected_id)
             row_id = st.selectbox("Стабильный ID строки (если есть)", options, index=options.index(remembered_id) if remembered_id in options else 0, key=profile + "row_id")
             detected_costs = komertia_columns(raw)
-            is_komertia = bool(detected_costs["quantity"] and detected_costs["total"])
-            use_komertia = st.checkbox("Полная себестоимость Komertia: Razem ÷ Ilość (расходы уже в PLN)", value=is_komertia, disabled=not is_komertia, key=profile + "komertia_costs")
-            st.caption("Этот режим обновляет закупку и расходы из Komertia, сохраняя введённые цены Allegro и комиссии. Tr.+Cło уже включает пошлину — повторно она не начисляется.")
+            is_komertia = bool(detected_costs["final_unit"] or (detected_costs["quantity"] and detected_costs["total"]))
+            use_komertia = st.checkbox("Окончательная закупка Komertia: Cena szt. (или Razem ÷ Ilość)", value=is_komertia, disabled=not is_komertia, key=profile + "komertia_costs")
+            st.caption("В «Закупка PLN» записывается окончательная стоимость штуки с доставкой и таможней. Включённые расходы повторно не начисляются. Цены Allegro и комиссии сохраняются.")
             apply = st.form_submit_button("Загрузить в таблицу", type="primary")
         if apply:
             write(profile, {"mapping": mapping, "defaults": defaults, "rate": rate, "stock": stock, **identity_columns, "row_id": row_id})
@@ -197,7 +201,7 @@ def prepare_working_table(frame):
         if column in cleaned:
             cleaned = cleaned.loc[cleaned[column].map(number) != 0]
     # Different variants or manually edited expenses are never collapsed.
-    visible_columns = [c for c in cleaned.columns if c != "_position_id"]
+    visible_columns = [c for c in cleaned.columns if c not in ("_position_id", "_komertia_final_cost")]
     return cleaned.drop_duplicates(subset=visible_columns, keep="first").reset_index(drop=True)
 
 
@@ -224,14 +228,14 @@ if "Wariant" not in editor_frame:
 editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
 first_columns = ["№", "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %"]
 column_order = first_columns + [c for c in NUMERIC if c not in first_columns] + ["Товар", "SKU"]
-column_order += [c for c in editor_frame if c not in column_order and c != "_position_id"]
+column_order += [c for c in editor_frame if c not in column_order and c not in ("_position_id", "_komertia_final_cost")]
 config["№"] = st.column_config.NumberColumn("№", width=55, disabled=True, format="%d", pinned=True)
 config.update({c: st.column_config.TextColumn(c, width=150 if c == "Produkt" else 120) for c in ("Товар", "SKU", "Produkt", "Wariant")})
 for c in ("Закупка PLN", "Цена Allegro PLN", "Комиссия %"):
     config[c] = st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width=140)
 edited = st.data_editor(
     editor_frame, column_order=column_order,
-    column_config={**config, "_position_id": None},
+    column_config={**config, "_position_id": None, "_komertia_final_cost": None},
     disabled=["№", "Produkt", "Wariant", "_position_id"],
     num_rows="dynamic", hide_index=True, height=600, width="stretch",
     key=f"editor_{st.session_state.get('editor_revision', 0)}",
