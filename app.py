@@ -1,4 +1,5 @@
 from io import BytesIO
+from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs
 import pandas as pd
 import streamlit as st
@@ -169,12 +170,18 @@ if demo_col.button("Открыть демонстрационный пример
 if reset_col.button("Сбросить текущий анализ"):
     st.session_state["pending_action"] = "reset"
 
+if st.button("Загрузить товары из скриншотов Komertia"):
+    st.session_state["pending_action"] = "screenshots"
+
 pending = st.session_state.get("pending_action")
 if pending:
-    st.warning("Заменить текущий анализ демонстрационным примером?" if pending == "demo" else "Удалить все товары из текущего анализа? Это действие нельзя отменить.")
+    if pending == "screenshots":
+        st.info("Загрузить 29 позиций из ваших скриншотов? Нулевые остатки исключены. Общие расходы распределены по количеству. Названия сокращены как на снимках; строка Komertia указана отдельно. Текущие данные заменяются, а сохранённые правки ранее загруженных позиций этого набора сохраняются.")
+    st.warning("Заменить текущий анализ демонстрационным примером?" if pending == "demo" else "Загрузить таблицу из скриншотов?" if pending == "screenshots" else "Удалить все товары из текущего анализа? Это действие нельзя отменить.")
     yes, no = st.columns(2)
-    if yes.button("Подтвердить замену" if pending == "demo" else "Подтвердить сброс"):
-        if replace_analysis(sample if pending == "demo" else pd.DataFrame(columns=INPUTS)):
+    if yes.button("Подтвердить загрузку" if pending == "screenshots" else "Подтвердить замену" if pending == "demo" else "Подтвердить сброс"):
+        target = merge_import(load_catalog(), load_analysis()) if pending == "screenshots" else sample if pending == "demo" else pd.DataFrame(columns=INPUTS)
+        if replace_analysis(target):
             st.rerun()
     if no.button("Отмена"):
         st.session_state.pop("pending_action", None)
