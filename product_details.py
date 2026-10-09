@@ -7,8 +7,10 @@ import pandas as pd
 
 PHOTO = 'Фото Komertia'
 FULL_NAME = 'Полное название Komertia'
-DETAILS = [PHOTO, FULL_NAME]
+NAME_PL = 'Nazwa produktu'
+DETAILS = [PHOTO, FULL_NAME, NAME_PL]
 ALIASES = {
+    NAME_PL: [NAME_PL, 'Nazwa PL', 'Короткое польское название'],
     PHOTO: [PHOTO, 'Zdjęcie', 'Zdjecie', 'Zdjęcie URL', 'Photo', 'Image URL', 'Фото'],
     FULL_NAME: [FULL_NAME, 'Pełna nazwa', 'Pelna nazwa', 'Nazwa produktu', 'Full product name'],
 }
@@ -31,6 +33,26 @@ def photo_source(item):
     return content if parsed.scheme in ('http', 'https') and parsed.netloc else ''
 
 
+def polish_name(row):
+    from pathlib import Path
+    import json
+    names = json.loads((Path(__file__).parent / 'assets' / 'polish-names.json').read_text())
+    known = names.get(value(row.get('_position_id')))
+    if known:
+        return known
+    # Source text is never overwritten. Unknown products need a supplied Polish title.
+    source = value(row.get('Produkt')) or value(row.get('Товар'))
+    translations = {'Органайзер': 'Organizer', 'Лампа': 'Lampa', 'Чехол': 'Pokrowiec'}
+    if source in translations:
+        return translations[source]
+    if re.search(r'[А-Яа-яЁё]', source) or '…' in source or '...' in source:
+        return ''
+    variant = complete_name(row.get('Wariant'))
+    if re.search(r'[А-Яа-яЁё]', variant) or variant.strip() == '—':
+        variant = ''
+    return ', '.join(part for part in (source, variant) if part)
+
+
 def enrich_details(frame):
     if frame is None:
         return None
@@ -40,6 +62,9 @@ def enrich_details(frame):
             result[field] = ''
         else:
             result[field] = result[field].map(value)
+    for index, row in result.iterrows():
+        if not value(row[NAME_PL]).strip():
+            result.loc[index, NAME_PL] = polish_name(row)
     return result
 
 

@@ -1,0 +1,36 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><style>
+body{font:14px system-ui;margin:0;color:#172554;background:#f8fafc} .scroll{max-height:570px;overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border:1px solid #cbd5e1;vertical-align:middle}th{position:sticky;top:0;background:#e2e8f0;z-index:1}td.name{white-space:pre-wrap;overflow-wrap:anywhere}td.photo{width:200px;outline-offset:-3px}td.photo:focus{outline:3px solid #2563eb;background:#eff6ff}button{cursor:pointer;border:1px solid #94a3b8;border-radius:6px;background:white;padding:5px 9px;color:#172554}.thumb{display:block;margin-bottom:6px;padding:0;line-height:0}.thumb img{width:90px;height:90px;object-fit:contain}small{display:block;color:#475569;margin:5px 0}.paste-target{margin:6px 0;font-size:12px;border:1px dashed #94a3b8;border-radius:4px;padding:7px;cursor:text}.paste-target:focus{outline:2px solid #2563eb}dialog{width:min(90%,800px);border:1px solid #94a3b8;border-radius:8px;padding:10px}dialog img{display:block;max-width:100%;max-height:550px;object-fit:contain;margin:auto}dialog::backdrop{background:#0008}#status{padding:8px;white-space:pre-wrap}input[type=file]{display:none}
+</style></head><body><div id="status" role="status" aria-live="polite"></div><div class="scroll"><table><thead><tr><th>№</th><th>Фото Komertia</th><th>Nazwa produktu</th></tr></thead><tbody id="rows"></tbody></table></div><dialog id="preview"><button id="close">Zamknij</button><img id="large" alt="Zdjęcie produktu Komertia"></dialog><script>
+const send=(type,rest={})=>parent.postMessage({isStreamlitMessage:true,type,...rest},'*');
+const status=document.getElementById('status');
+let disabled=false;
+function height(){send('streamlit:setFrameHeight',{height:preview.open?680:Math.min(640,document.body.scrollHeight+15)});}
+function previewImage(src){document.getElementById('large').src=src;preview.showModal();height();}
+const preview=document.getElementById('preview');
+document.getElementById('close').onclick=()=>preview.close();preview.addEventListener('close',height);preview.addEventListener('click',e=>{if(e.target===preview)preview.close()});
+function upload(file,id){
+ if(disabled)return;
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type)){status.textContent='Вставьте изображение PNG, JPEG или WebP.';return;}
+ if(file.size>5*1024*1024){status.textContent='Максимальный размер фото — 5 МБ.';return;}
+ status.textContent='Сохраняем фотографию…';disabled=true;
+ const reader=new FileReader();reader.onerror=()=>{disabled=false;status.textContent='Не удалось прочитать изображение.'};
+ reader.onload=()=>send('streamlit:setComponentValue',{value:{position_id:id,data:reader.result,event_id:crypto.randomUUID()},dataType:'json'});
+ reader.readAsDataURL(file);
+}
+window.addEventListener('message',e=>{
+ if(e.source!==parent || e.data.type!=='streamlit:render')return;
+ disabled=Boolean(e.data.disabled);const args=e.data.args;
+ status.textContent=args.error||'Щёлкните ячейку фото и нажмите Cmd + V (Mac) или Ctrl + V. На Komertia используйте «Копировать изображение».';
+ const tbody=document.getElementById('rows');tbody.replaceChildren();
+ (args.rows||[]).forEach((row,i)=>{
+ const tr=document.createElement('tr');const number=document.createElement('td');number.textContent=i+1;tr.append(number);
+ const cell=document.createElement('td');cell.className='photo';cell.tabIndex=0;cell.setAttribute('aria-label','Фото Komertia: '+row.name);
+ if(row.photo){const button=document.createElement('button');button.className='thumb';button.title='Powiększ zdjęcie';const img=document.createElement('img');img.src=row.photo;img.alt=row.name||'Zdjęcie produktu';button.append(img);button.onclick=()=>previewImage(row.photo);cell.append(button);}
+ const target=document.createElement('div');target.className='paste-target';target.tabIndex=0;target.textContent='Kliknij i wklej zdjęcie: ⌘V';target.setAttribute('role','textbox');target.setAttribute('aria-label','Wklej zdjęcie produktu');cell.append(target);
+ cell.addEventListener('paste',event=>{event.preventDefault();const file=Array.from(event.clipboardData?.items||[]).find(item=>item.kind==='file'&&item.type.startsWith('image/'))?.getAsFile();if(file)upload(file,row.id);else status.textContent='В буфере нет изображения. На сайте Komertia выберите «Копировать изображение», либо загрузите файл.';});
+ const file=document.createElement('input');file.type='file';file.accept='image/png,image/jpeg,image/webp';file.onchange=()=>{if(file.files[0])upload(file.files[0],row.id)};
+ const choose=document.createElement('button');choose.textContent='Загрузить файл';choose.disabled=disabled;choose.onclick=()=>file.click();cell.append(choose,file);tr.append(cell);
+ const name=document.createElement('td');name.className='name';name.textContent=row.name||'Uzupełnij nazwę po polsku';tr.append(name);tbody.append(tr);
+ });height();
+});send('streamlit:componentReady',{apiVersion:1});
+</script></body></html>

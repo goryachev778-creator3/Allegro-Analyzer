@@ -56,3 +56,44 @@ def test_large_photo_backup_is_lossless():
     assert restored.loc[0, FULL_NAME] == frame.loc[0, FULL_NAME]
     with pytest.raises(ValueError):
         uploaded_photo(b'not an image')
+
+
+def test_polish_titles_preserve_all_originals_and_26_positions():
+    from product_details import NAME_PL
+    from screenshot_catalog import load_catalog
+    frame = load_catalog().iloc[:26].copy()
+    frame[FULL_NAME] = 'Oryginalna pełna nazwa Komertia'
+    before = frame.copy()
+    enriched = enrich_details(frame)
+    assert len(enriched) == 26 and enriched[NAME_PL].str.len().gt(0).all()
+    assert not enriched[NAME_PL].str.contains(r'[А-Яа-яЁё]|…', regex=True).any()
+    pd.testing.assert_frame_equal(enriched[before.columns], before)
+    assert '50 kg' in enriched.iloc[2][NAME_PL]
+    assert '20 × 20 cm' in enriched.iloc[6][NAME_PL]
+    enriched.loc[0, NAME_PL] = 'Pokrowiec na ubrania, własna nazwa'
+    save_analysis(enriched)
+    reimported = merge_import(frame, load_analysis())
+    assert reimported.loc[0, NAME_PL] == enriched.loc[0, NAME_PL]
+    pd.testing.assert_frame_equal(reimported[NUMERIC], before[NUMERIC])
+
+
+def test_pasted_photo_targets_id_and_survives_storage_and_backup():
+    from photo_grid import apply_photo_event
+    from screenshot_catalog import load_catalog
+    frame = enrich_details(load_catalog().iloc[:26])
+    image = BytesIO()
+    Image.new('RGB', (15, 20), 'red').save(image, format='PNG')
+    photo = uploaded_photo(image.getvalue())
+    position = frame.iloc[10]['_position_id']
+    event = {'position_id': position, 'event_id': 'paste-event-1', 'data': photo}
+    updated = apply_photo_event(frame.iloc[::-1], event)
+    assert updated.loc[updated['_position_id'].eq(position), PHOTO].item() == photo
+    pd.testing.assert_frame_equal(updated.drop(columns=PHOTO), frame.iloc[::-1].drop(columns=PHOTO))
+    save_analysis(updated)
+    restored = read_backup(backup_excel(load_analysis()))
+    assert restored.loc[restored['_position_id'].eq(position), PHOTO].item() == photo
+    assert len(restored) == 26
+    with pytest.raises(ValueError):
+        apply_photo_event(frame, {**event, 'position_id': 'missing'})
+    with pytest.raises(ValueError):
+        apply_photo_event(frame, {**event, 'data': 'data:image/png;base64,not-image'})

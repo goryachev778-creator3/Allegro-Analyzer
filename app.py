@@ -1,5 +1,6 @@
 from io import BytesIO
-from product_details import PHOTO, FULL_NAME, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
+from photo_grid import photo_grid, apply_photo_event
+from product_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
 from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs
 import pandas as pd
@@ -239,18 +240,19 @@ if "Produkt" not in editor_frame:
 if "Wariant" not in editor_frame:
     editor_frame["Wariant"] = ""
 editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
-first_columns = ["№", PHOTO, FULL_NAME, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %"]
-column_order = first_columns + [c for c in NUMERIC if c not in first_columns] + ["Товар", "SKU"]
-column_order += [c for c in editor_frame if c not in column_order and c not in ("_position_id", "_komertia_final_cost")]
+hidden_source = ["Товар", "Produkt", "Wariant", FULL_NAME, "_position_id", "_komertia_final_cost"]
+first_columns = ["№", PHOTO, NAME_PL, "Закупка PLN", "Цена Allegro PLN", "Комиссия %"]
+column_order = first_columns + [c for c in NUMERIC if c not in first_columns] + ["SKU"]
+column_order += [c for c in editor_frame if c not in column_order and c not in hidden_source]
 config["№"] = st.column_config.NumberColumn("№", width=55, disabled=True, format="%d", pinned=True)
 config[PHOTO] = st.column_config.ImageColumn(PHOTO, width="medium")
-config[FULL_NAME] = st.column_config.TextColumn(FULL_NAME, width="large")
+config[NAME_PL] = st.column_config.TextColumn(NAME_PL, width="large", help="Короткое польское название: модель, размер, цвет, комплектация, если известны из источника.")
 config.update({c: st.column_config.TextColumn(c, width=150 if c == "Produkt" else 120) for c in ("Товар", "SKU", "Produkt", "Wariant")})
 for c in ("Закупка PLN", "Цена Allegro PLN", "Комиссия %"):
     config[c] = st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width=140)
 edited = st.data_editor(
     editor_frame, column_order=column_order,
-    column_config={**config, "_position_id": None, "_komertia_final_cost": None},
+    column_config={**config, **{c: None for c in hidden_source}},
     disabled=["№", PHOTO, "Produkt", "Wariant", "_position_id"],
     num_rows="dynamic", hide_index=True, height=600, width="stretch",
     key=f"editor_{st.session_state.get('editor_revision', 0)}",
@@ -271,24 +273,43 @@ st.markdown("""<style>
 .komertia-table th,.komertia-table td {padding:10px; border:1px solid #8885; text-align:left; vertical-align:top; white-space:pre-wrap; overflow-wrap:anywhere; min-width:120px;}
 .komertia-table img {width:100px; height:100px; object-fit:contain;}
 </style>""", unsafe_allow_html=True)
-st.subheader("Полные данные товаров Komertia")
-st.caption("Названия и варианты показаны целиком, как в источнике. Многоточие в исходном скриншоте означает, что продолжение отсутствует. Пустые фото и полные названия можно заполнить вручную ниже.")
-st.markdown(full_table(edited.assign(**{"№": range(1, len(edited) + 1)}), ["№", PHOTO, FULL_NAME, "Produkt", "Wariant"]), unsafe_allow_html=True)
+st.subheader("Фото и названия товаров")
+st.caption("Одно польское название на товар. Указаны только известные характеристики; отсутствующие параметры не дополняются. Оригинальные данные Komertia сохранены отдельно.")
+from storage import ensure_ids
+photo_frame = ensure_ids(edited)
+photo_event = photo_grid(photo_frame, st.session_state.get("photo_error", ""))
+if photo_event and photo_event.get("event_id") != st.session_state.get("last_photo_event"):
+    try:
+        updated = apply_photo_event(photo_frame, photo_event)
+        if replace_analysis(updated):
+            st.session_state["last_photo_event"] = photo_event["event_id"]
+            st.session_state.pop("photo_error", None)
+            st.rerun()
+    except ValueError as exc:
+        st.session_state["last_photo_event"] = photo_event.get("event_id")
+        st.session_state["photo_error"] = str(exc)
+        st.error(str(exc))
 if not edited.empty:
-    with st.expander("Добавить фото или полное название Komertia вручную"):
+    with st.expander("Фото, польское название и исходные данные Komertia"):
         from storage import ensure_ids
         detail_frame = ensure_ids(edited)
         positions = list(detail_frame['_position_id'])
-        labels = {row['_position_id']: f"{i + 1}. {row.get('Produkt', row['Товар'])} · {row.get('Wariant', '')}" for i, row in detail_frame.iterrows()}
+        labels = {row['_position_id']: f"{i + 1}. {row[NAME_PL] or 'Uzupełnij nazwę po polsku'}" for i, row in detail_frame.iterrows()}
         selected = st.selectbox("Товар и вариант", positions, format_func=lambda item: labels[item], key="detail_position")
         row_index = positions.index(selected)
         row = detail_frame.iloc[row_index]
+        st.text("Оригинальный Produkt: " + str(row.get("Produkt", "")))
+        st.text("Оригинальный Wariant: " + str(row.get("Wariant", "")))
         with st.form("details_" + selected + "_" + str(st.session_state.get("editor_revision", 0))):
+            polish_title = st.text_area(NAME_PL, value=row[NAME_PL], help="Короткое название на польском языке с известными характеристиками.")
             name = st.text_area(FULL_NAME, value=row[FULL_NAME], help="Вставьте оригинальное полное название. Пустое поле остаётся пустым.")
             photo = st.file_uploader(PHOTO, type=["png", "jpg", "jpeg", "webp"], help="Оригинальное фото до 5 МБ; хранится вместе с товаром в существующей базе.")
             save_details = st.form_submit_button("Сохранить фото и название")
         if save_details:
             try:
+                if __import__("re").search(r"[А-Яа-яЁё]", polish_title):
+                    raise ValueError("Введите короткое название на польском языке.")
+                detail_frame.loc[row_index, NAME_PL] = polish_title
                 detail_frame.loc[row_index, FULL_NAME] = name
                 if photo is not None:
                     detail_frame.loc[row_index, PHOTO] = uploaded_photo(photo.getvalue())
@@ -318,9 +339,9 @@ search = left.text_input("Поиск по названию или SKU")
 statuses = right.multiselect("Статус", list(COLORS), default=list(COLORS))
 visible = result[result["Статус"].isin(statuses)]
 if search:
-    visible = visible[visible["Товар"].str.contains(search, case=False, regex=False, na=False) | visible["SKU"].str.contains(search, case=False, regex=False, na=False) | visible[FULL_NAME].str.contains(search, case=False, regex=False, na=False) | visible["Wariant"].str.contains(search, case=False, regex=False, na=False)]
-summary = ["Товар", "SKU", "Статус", "Себестоимость PLN", "Цена Allegro PLN", "Комиссия всего PLN", "Прибыль PLN", "Маржа %", "ROI %"]
-summary = [PHOTO, FULL_NAME, "Produkt", "Wariant"] + summary
+    visible = visible[visible[NAME_PL].str.contains(search, case=False, regex=False, na=False) | visible["SKU"].str.contains(search, case=False, regex=False, na=False) | visible[FULL_NAME].str.contains(search, case=False, regex=False, na=False) | visible["Wariant"].str.contains(search, case=False, regex=False, na=False)]
+summary = ["SKU", "Статус", "Себестоимость PLN", "Цена Allegro PLN", "Комиссия всего PLN", "Прибыль PLN", "Маржа %", "ROI %"]
+summary = [PHOTO, NAME_PL] + summary
 summary = [c for c in summary if c in visible]
 def row_style(row):
     return [f"background-color: #{COLORS[row['Статус']]}; color: #172554" for _ in row]
