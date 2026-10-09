@@ -1,6 +1,6 @@
 from io import BytesIO
+from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
 from photo_grid import photo_grid, apply_photo_event
-from product_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
 from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs
 import pandas as pd

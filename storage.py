@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 from analyzer import INPUTS
-from product_details import DETAILS, enrich_details
+from komertia_details import DETAILS, enrich_details
 
 
 def database_path():
@@ -132,7 +132,7 @@ def backup_excel(frame):
     stream = BytesIO()
     records = ensure_ids(frame.reset_index(drop=True))
     with pd.ExcelWriter(stream, engine='openpyxl') as writer:
-        from product_details import excel_details
+        from komertia_details import excel_details
         excel_details(records, writer, 'Рабочие данные')
         for row in writer.sheets['Рабочие данные']:
             for cell in row:
@@ -145,7 +145,7 @@ def read_backup(data):
     from io import BytesIO
     from analyzer import calculate
     frame = pd.read_excel(BytesIO(data), sheet_name='Рабочие данные', dtype={'SKU': str, '_position_id': str}).fillna({'SKU': '', 'Товар': '', 'Produkt': '', 'Wariant': ''})
-    from product_details import PHOTO
+    from komertia_details import PHOTO
     frame = enrich_details(frame)
     workbook = pd.ExcelFile(BytesIO(data))
     if 'Фото данные' in workbook.sheet_names:
@@ -182,7 +182,7 @@ def identify_rows(raw, product_column, variant_column=None, source_id_column=Non
     """
     result = raw.copy()
     counts = {}
-    from product_details import ALIASES
+    from komertia_details import ALIASES
     ignored = {stock_column, '_position_id', *INPUTS[2:]}
     ignored.update(c for c in raw.columns if str(c).strip().casefold() in {a.casefold() for aliases in ALIASES.values() for a in aliases})
     from komertia import normalize

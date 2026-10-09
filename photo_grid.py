@@ -2,14 +2,16 @@
 import base64
 from pathlib import Path
 import streamlit.components.v1 as components
-from product_details import PHOTO, NAME_PL, uploaded_photo, photo_source, value
+from komertia_details import PHOTO, NAME_PL, uploaded_photo, photo_source, value
 
-_component = components.declare_component('komertia_photo_grid', path=str(Path(__file__).parent / 'photo_grid'))
+def _photo_component():
+    # Register only inside the running Streamlit script, after page configuration.
+    return components.declare_component('komertia_photo_grid', path=str(Path(__file__).parent / 'photo_grid'))
 
 
 def photo_grid(frame, error=''):
     rows = [{'id': value(row['_position_id']), 'name': value(row[NAME_PL]), 'photo': photo_source(row[PHOTO])} for _, row in frame.iterrows()]
-    return _component(rows=rows, error=error, key='komertia_photos', default=None)
+    return _photo_component()(rows=rows, error=error, key='komertia_photos', default=None)
 
 
 def apply_photo_event(frame, event):
