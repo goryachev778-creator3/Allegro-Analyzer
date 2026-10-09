@@ -1,4 +1,11 @@
 from io import BytesIO
+import importlib
+import komertia_details
+import storage
+# Streamlit reruns keep imported modules cached after a source update.
+# Refresh the pure metadata/storage definitions before binding their functions.
+importlib.reload(komertia_details)
+importlib.reload(storage)
 from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
 from photo_grid import photo_grid, apply_photo_event
 from screenshot_catalog import load_catalog

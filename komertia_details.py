@@ -33,13 +33,39 @@ def photo_source(item):
     return content if parsed.scheme in ('http', 'https') and parsed.netloc else ''
 
 
+def _source_key(item):
+    import unicodedata
+    return ' '.join(unicodedata.normalize('NFKC', value(item)).casefold().replace('...', '…').split())
+
+
 def polish_name(row):
     from pathlib import Path
     import json
-    names = json.loads((Path(__file__).parent / 'assets' / 'polish-names.json').read_text())
-    known = names.get(value(row.get('_position_id')))
+    assets = Path(__file__).parent / 'assets'
+    names = json.loads((assets / 'polish-names.json').read_text())
+    catalog = json.loads((assets / 'komertia-screenshots.json').read_text())['rows']
+    position = value(row.get('_position_id'))
+    known = names.get(position)
+    if not known and position.startswith('komertia-screenshot-oct2026:'):
+        original = next((r for r in catalog if str(r['source_row']) == position.split(':')[-1]), None)
+        if original:
+            known = names.get(original['position_id'])
     if known:
         return known
+    # Historical saved analyses can have hash/legacy IDs instead of catalog UUIDs.
+    # Match original text, never row order, costs or prices. Identical source
+    # descriptions may share a title; conflicting variant titles are ambiguous.
+    sources = {_source_key(row.get(c)) for c in ('Produkt', 'Товар', FULL_NAME)} - {''}
+    variant = _source_key(row.get('Wariant'))
+    exact = {names[r['position_id']] for r in catalog
+             if _source_key(r['Produkt']) in sources
+             and _source_key(r['Wariant']) == variant}
+    if len(exact) == 1:
+        return exact.pop()
+    if not variant or variant == '—':
+        candidates = {names[r['position_id']] for r in catalog if _source_key(r['Produkt']) in sources}
+        if len(candidates) == 1:
+            return candidates.pop()
     # Source text is never overwritten. Unknown products need a supplied Polish title.
     source = value(row.get('Produkt')) or value(row.get('Товар'))
     translations = {'Органайзер': 'Organizer', 'Лампа': 'Lampa', 'Чехол': 'Pokrowiec'}

@@ -103,8 +103,32 @@ def save_analysis(frame):
         db.close()
 
 
+def restore_product_names():
+    """Repair only blank Polish titles in the existing analysis transaction."""
+    from komertia_details import NAME_PL, polish_name, value
+    db = state_connection()
+    try:
+        with db:
+            # Serialize PostgreSQL repair against concurrent analysis writes.
+            if is_external():
+                db.execute("SELECT key FROM allegro_state WHERE key = %s FOR UPDATE", ('analysis',))
+            records = read_from(db, 'analysis')
+            changed = False
+            for row in records or []:
+                if not value(row.get(NAME_PL)).strip():
+                    recovered = polish_name(row)
+                    if recovered:
+                        row[NAME_PL] = recovered
+                        changed = True
+            if changed:
+                write_to(db, 'analysis', records)
+            return records
+    finally:
+        db.close()
+
+
 def load_analysis():
-    records = read('analysis')
+    records = restore_product_names()
     if records is None and is_external() and database_path().exists():
         local = sqlite3.connect(database_path())
         try:
