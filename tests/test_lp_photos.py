@@ -91,3 +91,41 @@ def test_ambiguous_original_variants_not_guessed_and_legacy_name_identity_used()
     row['source_row'] = 25
     with pytest.raises(ValueError):
         source_lp(row)
+
+
+def test_manual_all_26_without_lp_preserves_every_other_field_and_restart():
+    from komertia_photos import save_manual_zip_photos
+    from komertia_details import NAME_PL
+    frame = load_catalog().iloc[:26].drop(columns=['source_row', 'Produkt', 'Wariant', 'Ilość'])
+    frame['_position_id'] = [f'manual-position-{i}' for i in range(26)]
+    frame[NAME_PL] = [f'Produkt polski {i}' for i in range(26)]
+    save_analysis(frame)
+    before = read('analysis')
+    prices = read('prices')
+    ids = frame['_position_id'].tolist()
+    selections = {position: 38 - i for i, position in enumerate(ids)}
+    data = archive_for(range(1, 39))
+    photos = read_photo_zip(data)
+    result = save_manual_zip_photos(data, selections, ids)
+    for old, new in zip(before, result):
+        assert {k:v for k,v in new.items() if k != PHOTO} == old
+        assert new[PHOTO] == photos[selections[old['_position_id']]]
+    assert read('prices') == prices
+    assert load_analysis()[PHOTO].tolist() == [r[PHOTO] for r in result]
+
+
+def test_manual_selection_checks_current_ids_and_leaves_unselected_photo():
+    from komertia_photos import save_manual_zip_photos
+    frame = load_catalog().iloc[:2]
+    frame[PHOTO] = ['https://example.com/old1.png', 'https://example.com/old2.png']
+    save_analysis(frame)
+    before = read('analysis')
+    ids = frame['_position_id'].tolist()
+    data = archive_for([2])
+    for selections, expected in [({ids[0]: 3}, ids), ({'missing': 2}, ids), ({ids[0]: 2}, ids[:1])]:
+        with pytest.raises(ValueError):
+            save_manual_zip_photos(data, selections, expected)
+        assert read('analysis') == before
+    result = save_manual_zip_photos(data, {ids[0]: 2}, ids)
+    assert result[1] == before[1]
+    assert [r['_position_id'] for r in result] == ids

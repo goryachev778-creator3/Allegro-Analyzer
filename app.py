@@ -7,6 +7,8 @@ import komertia_photos
 # Refresh the pure metadata/storage definitions before binding their functions.
 importlib.reload(komertia_details)
 importlib.reload(komertia_photos)
+import manual_photo_mapping
+importlib.reload(manual_photo_mapping)
 importlib.reload(storage)
 from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
 from photo_grid import photo_grid, apply_photo_event
@@ -236,7 +238,12 @@ if "products" not in st.session_state or st.session_state["products"].empty:
 with st.expander("Импорт фотографий Komertia по исходным LP из ZIP"):
     photos_zip = st.file_uploader("ZIP с файлами Komertia_LP_01.png–Komertia_LP_38.png", type=["zip"], key="lp_photo_zip")
     st.caption("Фото сопоставляются по исходному LP Komertia, а не по текущему номеру строки. Названия, цены, расчёты и порядок товаров сохраняются.")
-    if st.button("Сохранить фотографии ZIP в Neon", disabled=photos_zip is None):
+    if photos_zip is not None:
+        try:
+            manual_photo_mapping.render_manual_mapping(photos_zip.getvalue(), st.session_state["products"])
+        except ValueError as exc:
+            st.error(str(exc))
+    if st.button("Сохранить фотографии ZIP в Neon автоматически по LP", disabled=photos_zip is None):
         try:
             if not is_external():
                 raise ValueError("Подключение Neon не настроено. Фотографии не сохранены локально.")

@@ -136,3 +136,37 @@ def save_zip_photos(data):
         return updated, matched
     finally:
         db.close()
+
+
+def save_manual_zip_photos(data, selections, expected_ids):
+    """Change photos only, matching explicit selections by saved position ID."""
+    import pandas as pd
+    from storage import state_connection, is_external, read_from, write_to, ensure_ids
+    photos = read_photo_zip(data)
+    if not selections:
+        raise ValueError('Выберите хотя бы одну фотографию.')
+    db = state_connection()
+    try:
+        with db:
+            if is_external():
+                db.execute('SELECT key FROM allegro_state WHERE key = %s FOR UPDATE', ('analysis',))
+            records = read_from(db, 'analysis')
+            if not records:
+                raise ValueError('В базе нет текущих товаров.')
+            ids = ensure_ids(pd.DataFrame(records))['_position_id'].tolist()
+            if len(set(ids)) != len(ids) or set(ids) != set(expected_ids) or len(ids) != len(expected_ids):
+                raise ValueError('Состав товаров изменился. Обновите страницу и повторите сопоставление.')
+            if not set(selections).issubset(ids):
+                raise ValueError('Выбранный товар больше не существует.')
+            if any(not isinstance(lp, int) or isinstance(lp, bool) or lp not in photos for lp in selections.values()):
+                raise ValueError('Выбранной фотографии нет в ZIP.')
+            updated = []
+            for position, row in zip(ids, records):
+                record = dict(row)
+                if position in selections:
+                    record[PHOTO] = photos[selections[position]]
+                updated.append(record)
+            write_to(db, 'analysis', updated)
+        return updated
+    finally:
+        db.close()
