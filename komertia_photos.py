@@ -42,25 +42,67 @@ def read_photo_zip(data):
 
 
 def source_lp(row):
-    catalog = json.loads((Path(__file__).parent / 'assets' / 'komertia-screenshots.json').read_text())['rows']
-    candidates = set()
-    for field in ('source_row', 'LP Komertia', 'LP', 'Lp', 'lp'):
-        content = value(row.get(field)).strip()
-        if content:
-            try:
-                numeric = float(content)
-                if numeric <= 0 or numeric != int(numeric):
-                    raise ValueError()
-                candidates.add(int(numeric))
-            except ValueError:
-                raise ValueError('Некорректный исходный LP Komertia.') from None
-    position = value(row.get('_position_id'))
-    for original in catalog:
-        if position == original['position_id'] or position == f"komertia-screenshot-oct2026:{original['source_row']}":
-            candidates.add(original['source_row'])
+    from komertia_details import _source_key, NAME_PL
+    assets = Path(__file__).parent / 'assets'
+    catalog = json.loads((assets / 'komertia-screenshots.json').read_text())['rows']
+    titles = json.loads((assets / 'polish-names.json').read_text())
+    position = value(row.get('_position_id')).strip()
+    identities = [r for r in catalog if position in
+                  (r['position_id'], f"komertia-screenshot-oct2026:{r['source_row']}")]
+    explicit = value(row.get('source_row')).strip()
+    lp = None
+    if explicit:
+        try:
+            numeric = float(explicit)
+            if numeric <= 0 or numeric != int(numeric):
+                raise ValueError()
+            lp = int(numeric)
+        except ValueError:
+            raise ValueError('Некорректный исходный LP Komertia.') from None
+    if identities:
+        original_lp = identities[0]['source_row']
+        if lp is not None and lp != original_lp:
+            raise ValueError('Исходный LP противоречит постоянному ID первоначального импорта.')
+        return original_lp
+    if lp is not None:
+        return lp
+    # Ordinary LP/№ columns can contain renumbered display rows. Ignore them.
+    sources = {_source_key(row.get(c)) for c in ('Produkt', 'Товар')} - {''}
+    if position.startswith('legacy:'):
+        try:
+            key = json.loads(position[len('legacy:'):].rsplit(':', 1)[0])
+            if key and key[0] == 'name':
+                sources.add(_source_key(key[1]))
+        except (ValueError, TypeError, IndexError):
+            pass
+    candidates = [r for r in catalog if _source_key(r['Produkt']) in sources]
+    if not candidates and value(row.get(NAME_PL)).strip():
+        title = _source_key(row[NAME_PL])
+        candidates = [r for r in catalog if _source_key(titles.get(r['position_id'])) == title]
+    variant = _source_key(row.get('Wariant'))
+    if variant and candidates:
+        candidates = [r for r in candidates if _source_key(r['Wariant']) == variant]
+    if len(candidates) > 1:
+        quantity = next((value(row.get(c)).strip() for c in ('Ilość', 'ilosc', 'Количество', 'quantity') if value(row.get(c)).strip()), '')
+        if quantity:
+            from analyzer import number
+            candidates = [r for r in candidates if number(r['Ilość']) == number(quantity)]
     if len(candidates) != 1:
-        raise ValueError('Исходный LP отсутствует или противоречив. Номер строки таблицы не используется вместо LP.')
-    return candidates.pop()
+        raise ValueError('Не удалось однозначно восстановить исходный LP по первоначальным Produkt, Wariant и количеству. Номер строки не используется.')
+    return candidates[0]['source_row']
+
+
+def recover_source_lps(records, strict=False):
+    updated = []
+    for row in records:
+        result = dict(row)
+        try:
+            result['source_row'] = source_lp(row)
+        except ValueError:
+            if strict:
+                raise
+        updated.append(result)
+    return updated
 
 
 def apply_lp_photos(records, photos):
@@ -88,6 +130,7 @@ def save_zip_photos(data):
             records = read_from(db, 'analysis')
             if not records:
                 raise ValueError('В базе нет текущих товаров. Импорт фотографий не создаёт и не заменяет товары.')
+            records = recover_source_lps(records, strict=True)
             updated, matched = apply_lp_photos(records, photos)
             write_to(db, 'analysis', updated)
         return updated, matched

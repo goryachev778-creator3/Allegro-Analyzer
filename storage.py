@@ -120,6 +120,11 @@ def restore_product_names():
                     if recovered:
                         row[NAME_PL] = recovered
                         changed = True
+            from komertia_photos import recover_source_lps
+            recovered_rows = recover_source_lps(records or [])
+            if records is not None and recovered_rows != records:
+                records = recovered_rows
+                changed = True
             if changed:
                 write_to(db, 'analysis', records)
             return records
