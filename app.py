@@ -231,6 +231,24 @@ if "products" not in st.session_state or st.session_state["products"].empty:
     st.info("Загрузите файл или откройте пример, чтобы начать анализ.")
     st.stop()
 
+with st.expander("Импорт фотографий Komertia по исходным LP из ZIP"):
+    photos_zip = st.file_uploader("ZIP с файлами Komertia_LP_01.png–Komertia_LP_38.png", type=["zip"], key="lp_photo_zip")
+    st.caption("Фото сопоставляются по исходному LP Komertia, а не по текущему номеру строки. Названия, цены, расчёты и порядок товаров сохраняются.")
+    if st.button("Сохранить фотографии ZIP в Neon", disabled=photos_zip is None):
+        try:
+            if not is_external():
+                raise ValueError("Подключение Neon не настроено. Фотографии не сохранены локально.")
+            from komertia_photos import save_zip_photos
+            records, matched = save_zip_photos(photos_zip.getvalue())
+            st.session_state["products"] = pd.DataFrame(records)
+            st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
+            st.session_state["lp_photo_success"] = f"Сохранено фото в Neon: {len(matched)}. Исходные LP: " + ", ".join(map(str, matched))
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+if st.session_state.get("lp_photo_success"):
+    st.success(st.session_state["lp_photo_success"])
+
 st.subheader("Товары и расходы")
 st.info("Закупка и расходы — на 1 штуку. Укажите цену продажи Allegro и комиссию: прибыль, маржа и ROI рассчитываются автоматически.")
 st.markdown("""<style>
