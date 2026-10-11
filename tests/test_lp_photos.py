@@ -129,3 +129,59 @@ def test_manual_selection_checks_current_ids_and_leaves_unselected_photo():
     result = save_manual_zip_photos(data, {ids[0]: 2}, ids)
     assert result[1] == before[1]
     assert [r['_position_id'] for r in result] == ids
+
+
+def test_auto_preview_26_active_zero_excluded_and_confirmation_photo_only():
+    from komertia_photos import auto_photo_preview, save_confirmed_auto_photos
+    frame = load_catalog().iloc[:27].iloc[::-1].reset_index(drop=True)
+    frame.loc[0, 'Ilość'] = 0
+    frame.loc[0, PHOTO] = 'https://example.com/unchanged-zero.png'
+    save_analysis(frame)
+    before = read('analysis')
+    prices = read('prices')
+    data = archive_for(range(1, 39))
+    plan = auto_photo_preview(frame, read_photo_zip(data))
+    assert len(plan['matches']) == 26 and not plan['unresolved']
+    assert plan['excluded'] == [frame.iloc[0]['_position_id']]
+    assert [r['lp'] for r in plan['matches']] == frame.iloc[1:]['source_row'].tolist()
+    assert read('analysis') == before  # preview has no database writes
+    updated = save_confirmed_auto_photos(data, plan)
+    assert updated[0] == before[0]
+    for old, new in zip(before[1:], updated[1:]):
+        assert {k:v for k,v in new.items() if k != PHOTO} == {k:v for k,v in old.items() if k != PHOTO}
+    assert read('prices') == prices
+    assert len(load_analysis()) == 27  # zero-stock records are not deleted
+
+
+def test_auto_preview_ambiguous_is_not_guessed_and_stale_plan_is_rejected():
+    from komertia_photos import auto_photo_preview, save_confirmed_auto_photos
+    frame = load_catalog().iloc[:2]
+    data = archive_for(range(1, 39))
+    photos = read_photo_zip(data)
+    save_analysis(frame)
+    plan = auto_photo_preview(frame, photos)
+    reordered = frame.iloc[::-1]
+    save_analysis(reordered)
+    before = read('analysis')
+    with pytest.raises(ValueError):
+        save_confirmed_auto_photos(data, plan)
+    assert read('analysis') == before
+    unknown = frame.iloc[:1].drop(columns=['source_row', 'Produkt', 'Wariant', 'Ilość'])
+    unknown['_position_id'] = 'unknown'
+    unknown['Товар'] = ''
+    ambiguous = auto_photo_preview(unknown, photos)
+    assert len(ambiguous['unresolved']) == 1 and not ambiguous['matches']
+
+
+def test_auto_can_reuse_exact_manually_confirmed_zip_photo_without_original_lp():
+    import pandas as pd
+    from komertia_photos import auto_photo_preview
+    from komertia_details import NAME_PL
+    photos = read_photo_zip(archive_for([7, 8]))
+    frame = pd.DataFrame([{'_position_id': 'saved-manual-position', 'Товар': '', 'SKU': '', NAME_PL: 'Zachowana nazwa polska', PHOTO: photos[7]}])
+    plan = auto_photo_preview(frame, photos)
+    assert not plan['unresolved'] and plan['matches'][0]['lp'] == 7
+    assert plan['matches'][0]['name'] == 'Zachowana nazwa polska'
+    duplicate = {7: photos[7], 8: photos[7]}
+    plan = auto_photo_preview(frame, duplicate)
+    assert plan['unresolved'] and not plan['matches']

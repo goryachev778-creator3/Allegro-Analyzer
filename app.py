@@ -243,18 +243,6 @@ with st.expander("Импорт фотографий Komertia по исходны
             manual_photo_mapping.render_manual_mapping(photos_zip.getvalue(), st.session_state["products"])
         except ValueError as exc:
             st.error(str(exc))
-    if st.button("Сохранить фотографии ZIP в Neon автоматически по LP", disabled=photos_zip is None):
-        try:
-            if not is_external():
-                raise ValueError("Подключение Neon не настроено. Фотографии не сохранены локально.")
-            from komertia_photos import save_zip_photos
-            records, matched = save_zip_photos(photos_zip.getvalue())
-            st.session_state["products"] = pd.DataFrame(records)
-            st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
-            st.session_state["lp_photo_success"] = f"Сохранено фото в Neon: {len(matched)}. Исходные LP: " + ", ".join(map(str, matched))
-            st.rerun()
-        except Exception as exc:
-            st.error(str(exc))
 if st.session_state.get("lp_photo_success"):
     st.success(st.session_state["lp_photo_success"])
 

@@ -170,3 +170,66 @@ def save_manual_zip_photos(data, selections, expected_ids):
         return updated
     finally:
         db.close()
+
+
+def auto_photo_preview(frame, photos):
+    """Resolve active saved products; never guess from their display position."""
+    from storage import ensure_ids
+    from analyzer import number
+    from komertia_details import NAME_PL
+    current = ensure_ids(frame.reset_index(drop=True))
+    matches, unresolved, excluded = [], [], []
+    for _, row in current.iterrows():
+        position = row['_position_id']
+        name = value(row.get(NAME_PL))
+        quantity = next((row[c] for c in ('Ilość', 'ilosc', 'Количество', 'quantity') if c in row and value(row[c]).strip()), None)
+        if quantity is not None and number(quantity) == 0:
+            excluded.append(position)
+            continue
+        lp = None
+        reason = ''
+        try:
+            lp = source_lp(row)
+        except ValueError as exc:
+            reason = str(exc)
+            # A previously manually confirmed exact ZIP image is useful provenance.
+            exact = [n for n, photo in photos.items() if value(row.get(PHOTO)) == photo]
+            if len(exact) == 1:
+                lp = exact[0]
+        if lp is None or lp not in photos:
+            unresolved.append({'position_id': position, 'name': name, 'error': reason or f'В ZIP нет LP {lp}.'})
+            continue
+        matches.append({'position_id': position, 'name': name, 'lp': lp, 'photo': photos[lp]})
+    return {'matches': matches, 'unresolved': unresolved, 'excluded': excluded, 'ids': current['_position_id'].tolist()}
+
+
+def save_confirmed_auto_photos(data, preview):
+    """Validate the preview against current persisted data before photo-only save."""
+    import pandas as pd
+    from storage import state_connection, is_external, read_from, write_to
+    photos = read_photo_zip(data)
+    db = state_connection()
+    try:
+        with db:
+            if is_external():
+                db.execute('SELECT key FROM allegro_state WHERE key = %s FOR UPDATE', ('analysis',))
+            records = read_from(db, 'analysis')
+            if not records:
+                raise ValueError('В базе нет текущих товаров.')
+            current = auto_photo_preview(pd.DataFrame(records), photos)
+            if current['unresolved'] or not current['matches']:
+                raise ValueError('Не все активные товары сопоставлены. Уточните ручное сопоставление.')
+            identity = lambda plan: [(r['position_id'], r['name'], r['lp']) for r in plan['matches']]
+            if current['ids'] != preview.get('ids') or current['excluded'] != preview.get('excluded') or identity(current) != identity(preview):
+                raise ValueError('Данные сопоставления изменились. Сформируйте предварительный результат заново.')
+            assigned = {r['position_id']: r['photo'] for r in current['matches']}
+            updated = []
+            for position, row in zip(current['ids'], records):
+                record = dict(row)
+                if position in assigned:
+                    record[PHOTO] = assigned[position]
+                updated.append(record)
+            write_to(db, 'analysis', updated)
+        return updated
+    finally:
+        db.close()
