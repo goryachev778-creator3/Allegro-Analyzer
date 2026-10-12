@@ -3,7 +3,7 @@ import base64
 import hashlib
 import pandas as pd
 import streamlit as st
-from komertia_details import NAME_PL, enrich_details, original_label
+from komertia_details import NAME_PL, enrich_details, original_label, is_order_total
 from komertia_photos import read_photo_zip, save_manual_zip_photos, auto_photo_preview, save_confirmed_auto_photos
 from storage import ensure_ids, is_external
 
@@ -17,16 +17,18 @@ def render_manual_mapping(payload, frame):
     if saved_preview and saved_preview['zip_revision'] == revision:
         plan = saved_preview['plan']
         st.subheader('Предварительный результат автоматического сопоставления')
-        st.caption(f"Сопоставлено: {len(plan['matches'])} · без однозначного совпадения: {len(plan['unresolved'])} · исключено с количеством 0: {len(plan['excluded'])}")
+        st.caption(f"Сопоставлено: {len(plan['matches'])} · без однозначного совпадения: {len(plan['unresolved'])} · исключено с количеством 0: {len(plan['excluded'])} · итоговых строк: {len(plan.get('totals', []))}")
         preview_table = pd.DataFrame([{'Produkt': r['product'], 'Wariant': r['variant'], 'Исходный LP Komertia': r['lp'], 'Фото Komertia': r['photo']} for r in plan['matches']])
         if not preview_table.empty:
             st.dataframe(preview_table, column_config={'Фото Komertia': st.column_config.ImageColumn('Фото Komertia', width='medium'), 'Produkt': st.column_config.TextColumn('Produkt', width='large'), 'Wariant': st.column_config.TextColumn('Wariant', width='large')}, hide_index=True, width='stretch', height=500)
+        if plan.get('protected'):
+            st.info(f"Существующие фотографии сохранены без замены: {len(plan['protected'])}")
         if plan['unresolved']:
-            st.warning('Некоторым товарам не хватает исходных данных. Выберите их фото вручную ниже; после сохранения ручных фото автоматическое сопоставление сможет использовать точные изображения из ZIP.')
+            st.warning('Найденные совпадения можно сохранить сейчас. Для остальных товаров выберите фото вручную ниже; существующие фотографии останутся на месте.')
             for item in plan['unresolved']:
                 st.write(item['name'] or 'Nazwa nieuzupełniona')
                 st.caption(item['error'])
-        if st.button('Подтвердить и сохранить автоматически сопоставленные фото в Neon', disabled=bool(plan['unresolved']) or not plan['matches'], key='confirm_auto_photos'):
+        if st.button('Подтвердить и сохранить автоматически сопоставленные фото в Neon', disabled=not plan['matches'], key='confirm_auto_photos'):
             try:
                 if not is_external():
                     raise ValueError('Подключение Neon не настроено. Фотографии не сохранены локально.')
@@ -46,6 +48,8 @@ def render_manual_mapping(payload, frame):
             with columns[index % 6]:
                 st.image(base64.b64decode(photos[lp].split(',', 1)[1]), caption=f'LP {lp:02}', width=120)
     current = enrich_details(ensure_ids(frame.reset_index(drop=True)))
+    expected_ids = current['_position_id'].tolist()
+    current = current.loc[~current.apply(is_order_total, axis=1)].reset_index(drop=True)
     selections = {}
     for index, row in current.iterrows():
         name, choice, preview = st.columns([3, 2, 1])
@@ -59,7 +63,7 @@ def render_manual_mapping(payload, frame):
         try:
             if not is_external():
                 raise ValueError('Подключение Neon не настроено. Фотографии не сохранены локально.')
-            records = save_manual_zip_photos(payload, selections, current['_position_id'].tolist())
+            records = save_manual_zip_photos(payload, selections, expected_ids)
             st.session_state['products'] = pd.DataFrame(records)
             st.session_state['editor_revision'] = st.session_state.get('editor_revision', 0) + 1
             st.session_state['lp_photo_success'] = f'Сохранено выбранных фото в Neon: {len(selections)}. Остальные данные товаров не изменены.'

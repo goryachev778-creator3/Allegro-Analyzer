@@ -10,7 +10,7 @@ importlib.reload(komertia_photos)
 import manual_photo_mapping
 importlib.reload(manual_photo_mapping)
 importlib.reload(storage)
-from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table, original_label
+from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table, original_label, is_order_total
 import photo_grid as photo_grid_module
 importlib.reload(photo_grid_module)
 from photo_grid import photo_grid, apply_photo_event
@@ -285,7 +285,8 @@ with main_tab:
         calculated["Статус"] = "Без цены"
         calculated["Прибыль PLN"] = float("nan")
         calculated["Маржа %"] = float("nan")
-    mask = calculated["Статус"].isin(statuses)
+    product_rows = ~working.apply(is_order_total, axis=1)
+    mask = calculated["Статус"].isin(statuses) & product_rows
     if search:
         matches = pd.Series(False, index=working.index)
         for column in ("Produkt", "SKU", FULL_NAME, "Wariant"):
@@ -298,7 +299,7 @@ with main_tab:
     editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
     editor_frame = editor_frame.loc[mask].reset_index(drop=True)
     st.subheader("Товары")
-    st.caption(f"Показано: {len(editor_frame)} из {len(working)}")
+    st.caption(f"Показано: {len(editor_frame)} из {int(product_rows.sum())}")
     column_order = ["№", PHOTO, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
     if show_expenses:
         column_order += [c for c in NUMERIC + ["SKU", "Статус"] if c not in column_order]
@@ -346,7 +347,7 @@ with main_tab:
         st.info("Добавьте товар.")
     else:
         try:
-            result = calculate(edited, weak)
+            result = calculate(edited.loc[~edited.apply(is_order_total, axis=1)], weak)
             metric_slots[0].metric("Товаров", len(result))
             metric_slots[1].metric("Выгодных", int((result["Статус"] == "Выгодный").sum()))
             metric_slots[2].metric("Убыточных", int((result["Статус"] == "Убыточный").sum()))
@@ -360,10 +361,11 @@ with settings_tab:
     st.caption("Оригинальные Produkt и Wariant сохранены без перевода.")
     from storage import ensure_ids
     photo_frame = ensure_ids(edited)
+    photo_frame = photo_frame.loc[~photo_frame.apply(is_order_total, axis=1)].reset_index(drop=True)
     photo_event = photo_grid(photo_frame, st.session_state.get("photo_error", ""))
     if photo_event and photo_event.get("event_id") != st.session_state.get("last_photo_event"):
         try:
-            updated = apply_photo_event(photo_frame, photo_event)
+            updated = apply_photo_event(ensure_ids(edited), photo_event)
             if replace_analysis(updated):
                 st.session_state["last_photo_event"] = photo_event["event_id"]
                 st.session_state.pop("photo_error", None)
@@ -376,6 +378,7 @@ with settings_tab:
         with st.expander("Фото и исходные данные Komertia"):
             from storage import ensure_ids
             detail_frame = ensure_ids(edited)
+            detail_frame = detail_frame.loc[~detail_frame.apply(is_order_total, axis=1)].reset_index(drop=True)
             positions = list(detail_frame['_position_id'])
             labels = {row['_position_id']: f"{i + 1}. {original_label(row) or 'Brak nazwy w danych źródłowych'}" for i, row in detail_frame.iterrows()}
             selected = st.selectbox("Товар и вариант", positions, format_func=lambda item: labels[item], key="detail_position")
@@ -392,7 +395,11 @@ with settings_tab:
                     detail_frame.loc[row_index, FULL_NAME] = name
                     if photo is not None:
                         detail_frame.loc[row_index, PHOTO] = uploaded_photo(photo.getvalue())
-                    if replace_analysis(detail_frame):
+                    combined = ensure_ids(edited).copy()
+                    selected_row = detail_frame.iloc[row_index]
+                    for column in detail_frame.columns:
+                        combined.loc[combined['_position_id'].eq(selected), column] = selected_row[column]
+                    if replace_analysis(combined):
                         st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))

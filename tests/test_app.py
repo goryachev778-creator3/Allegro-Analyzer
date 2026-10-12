@@ -120,3 +120,23 @@ def test_single_main_table_filters_preserve_hidden_rows_and_prices():
     assert saved[NAME_PL].tolist() == before[NAME_PL].tolist()
     assert saved.iloc[25]['Цена Allegro PLN'] == 99
     assert saved.iloc[:25]['Цена Allegro PLN'].tolist() == before.iloc[:25]['Цена Allegro PLN'].tolist()
+
+
+def test_order_total_is_hidden_but_not_deleted_from_storage():
+    import pandas as pd
+    from screenshot_catalog import load_catalog
+    from storage import save_analysis, load_analysis
+    rows = load_catalog().iloc[:26].copy()
+    total = rows.iloc[[0]].copy()
+    total['Produkt'] = total['Товар'] = 'ИТОГО A1632'
+    total['Wariant'] = ''
+    total['_position_id'] = 'preserved-order-total'
+    save_analysis(pd.concat([rows, total], ignore_index=True))
+    from komertia_details import enrich_details
+    before = enrich_details(load_analysis())
+    app = AppTest.from_file(APP).run()
+    assert not app.exception
+    assert len(app.dataframe[0].value) == 26
+    assert app.metric[0].value == '26'
+    assert 'ИТОГО A1632' not in app.dataframe[0].value['Produkt'].tolist()
+    pd.testing.assert_frame_equal(load_analysis(), before)

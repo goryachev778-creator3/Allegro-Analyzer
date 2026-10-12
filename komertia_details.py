@@ -43,6 +43,8 @@ def original_record(row):
     from pathlib import Path
     import json
     result = dict(row)
+    if is_order_total(row):
+        return result
     for target in ('Produkt', 'Wariant'):
         aliases = sorted([c for c in row if str(c).strip().casefold() == target.casefold()], key=lambda c: str(c) != target.upper())
         source = next((row[c] for c in aliases if value(row[c]).strip()), '')
@@ -165,3 +167,12 @@ def excel_details(frame, writer, sheet):
     result.to_excel(writer, sheet_name=sheet, index=False)
     if chunks:
         pd.DataFrame(chunks).to_excel(writer, sheet_name='Фото данные', index=False)
+
+
+def is_order_total(row):
+    """The order footer is not a product; keep its stored record intact."""
+    fields = ('Produkt', 'PRODUKT', 'Товар', NAME_PL)
+    labels = {_source_key(row.get(c)) for c in fields}
+    labels.add(_source_key(original_label(row)))
+    labels.add(_source_key(' '.join(value(row.get(c)) for c in ('Produkt', 'Wariant'))))
+    return 'итого a1632' in labels

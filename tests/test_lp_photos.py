@@ -185,3 +185,46 @@ def test_auto_can_reuse_exact_manually_confirmed_zip_photo_without_original_lp()
     duplicate = {7: photos[7], 8: photos[7]}
     plan = auto_photo_preview(frame, duplicate)
     assert plan['unresolved'] and not plan['matches']
+
+
+def test_save_21_matches_with_5_unresolved_preserves_manual_photos_and_total():
+    import pandas as pd
+    from komertia_photos import auto_photo_preview, save_confirmed_auto_photos
+    frame = load_catalog().iloc[:26].copy()
+    # Five actual records lack provenance; keep their existing manual assignments.
+    for i in range(21, 26):
+        frame.loc[i, '_position_id'] = f'unknown-{i}'
+        frame.loc[i, 'source_row'] = None
+        frame.loc[i, 'Produkt'] = f'Oryginalny produkt {i}'
+        frame.loc[i, 'Wariant'] = f'Wariant {i}'
+        frame.loc[i, 'Товар'] = ''
+        frame.loc[i, PHOTO] = f'https://example.com/manual-{i}.png'
+    total = frame.iloc[[0]].copy()
+    total['_position_id'] = 'order-total'
+    total['Produkt'] = total['Товар'] = 'ИТОГО A1632'
+    total['Wariant'] = ''
+    frame = pd.concat([frame, total], ignore_index=True)
+    save_analysis(frame)
+    before = read('analysis')
+    prices = read('prices')
+    data = archive_for(range(1, 39))
+    plan = auto_photo_preview(frame, read_photo_zip(data))
+    assert len(plan['matches']) == 21 and len(plan['unresolved']) == 5
+    assert plan['totals'] == ['order-total']
+    updated = save_confirmed_auto_photos(data, plan)
+    assert len(updated) == len(before) == 27
+    for old, new in zip(before[:21], updated[:21]):
+        assert {k:v for k,v in new.items() if k != PHOTO} == {k:v for k,v in old.items() if k != PHOTO}
+    assert updated[21:] == before[21:]
+    assert read('prices') == prices
+    assert load_analysis()[PHOTO].tolist() == [r.get(PHOTO) for r in updated]
+
+
+def test_auto_does_not_override_existing_manual_photo_even_with_known_lp():
+    from komertia_photos import auto_photo_preview
+    frame = load_catalog().iloc[:2].copy()
+    frame.loc[0, PHOTO] = 'https://example.com/manually-confirmed.png'
+    plan = auto_photo_preview(frame, read_photo_zip(archive_for([1, 2])))
+    assert len(plan['matches']) == 1
+    assert plan['matches'][0]['lp'] == 2
+    assert plan['protected'][0]['position_id'] == frame.iloc[0]['_position_id']

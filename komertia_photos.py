@@ -172,12 +172,15 @@ def auto_photo_preview(frame, photos):
     """Resolve active saved products; never guess from their display position."""
     from storage import ensure_ids
     from analyzer import number
-    from komertia_details import NAME_PL, original_label
+    from komertia_details import NAME_PL, original_label, is_order_total
     current = ensure_ids(frame.reset_index(drop=True))
-    matches, unresolved, excluded = [], [], []
+    matches, unresolved, excluded, totals, protected = [], [], [], [], []
     for _, row in current.iterrows():
         position = row['_position_id']
         name = original_label(row)
+        if is_order_total(row):
+            totals.append(position)
+            continue
         quantity = next((row[c] for c in ('Ilość', 'ilosc', 'Количество', 'quantity') if c in row and value(row[c]).strip()), None)
         if quantity is not None and number(quantity) == 0:
             excluded.append(position)
@@ -195,8 +198,11 @@ def auto_photo_preview(frame, photos):
         if lp is None or lp not in photos:
             unresolved.append({'position_id': position, 'name': name, 'error': reason or f'В ZIP нет LP {lp}.'})
             continue
+        if value(row.get(PHOTO)).strip() and value(row.get(PHOTO)) != photos[lp]:
+            protected.append({'position_id': position, 'name': name})
+            continue
         matches.append({'position_id': position, 'name': name, 'product': value(row.get('Produkt')), 'variant': value(row.get('Wariant')), 'lp': lp, 'photo': photos[lp]})
-    return {'matches': matches, 'unresolved': unresolved, 'excluded': excluded, 'ids': current['_position_id'].tolist()}
+    return {'matches': matches, 'unresolved': unresolved, 'excluded': excluded, 'totals': totals, 'protected': protected, 'ids': current['_position_id'].tolist()}
 
 
 def save_confirmed_auto_photos(data, preview):
@@ -213,8 +219,8 @@ def save_confirmed_auto_photos(data, preview):
             if not records:
                 raise ValueError('В базе нет текущих товаров.')
             current = auto_photo_preview(pd.DataFrame(records), photos)
-            if current['unresolved'] or not current['matches']:
-                raise ValueError('Не все активные товары сопоставлены. Уточните ручное сопоставление.')
+            if not current['matches']:
+                raise ValueError('Нет подтверждённых совпадений для сохранения.')
             identity = lambda plan: [(r['position_id'], r['name'], r['lp']) for r in plan['matches']]
             if current['ids'] != preview.get('ids') or current['excluded'] != preview.get('excluded') or identity(current) != identity(preview):
                 raise ValueError('Данные сопоставления изменились. Сформируйте предварительный результат заново.')
