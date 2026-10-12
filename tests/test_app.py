@@ -16,8 +16,7 @@ def test_demo_workflow_and_margin_setting():
     assert app.metric[1].value == '0'
     app.text_input[0].set_value('ORG-01').run()
     assert not app.exception
-    table = next(m.value for m in reversed(app.markdown) if '<thead>' in m.value)
-    assert 'ORG-01' in table and 'LAMP-02' not in table
+    assert list(app.dataframe[0].value['SKU']) == ['ORG-01']
 
 
 def test_editor_autosaves_reload_and_demo_confirmation():
@@ -85,3 +84,39 @@ def test_display_order_numbers_and_saved_values():
     assert refreshed.dataframe[0].value.iloc[0]['Цена Allegro PLN'] == 150
     assert refreshed.dataframe[0].value.iloc[0]['Комиссия %'] == 9
     assert list(refreshed.dataframe[0].value['№']) == [1, 2, 3]
+
+
+
+def test_single_main_table_filters_preserve_hidden_rows_and_prices():
+    from screenshot_catalog import load_catalog
+    from storage import save_analysis, load_analysis
+    from komertia_details import NAME_PL, PHOTO, enrich_details
+    import pandas as pd
+    rows = enrich_details(load_catalog().iloc[:26])
+    rows[PHOTO] = ['https://example.com/' + str(i) + '.png' for i in range(26)]
+    rows[NAME_PL] = ['Produkt testowy ' + str(i) for i in range(26)]
+    rows['SKU'] = ['sku-' + str(i) for i in range(26)]
+    save_analysis(rows)
+    app = AppTest.from_file(APP).run()
+    assert not app.exception
+    assert [t.label for t in app.tabs] == ['Главная', 'Настройки и импорт']
+    assert len(app.dataframe) == 1
+    order = list(app.dataframe[0].proto.column_order)
+    assert 'Прибыль PLN' in order and 'Маржа %' in order
+    assert len(app.dataframe[0].value) == 26
+    before = load_analysis()
+    next(t for t in app.text_input if t.label == 'Поиск по названию или SKU').set_value('sku-25').run()
+    assert not app.exception
+    assert len(app.dataframe[0].value) == 1
+    pd.testing.assert_frame_equal(load_analysis(), before)
+    key = next(k for k in app.session_state.filtered_state if k.startswith('editor_') and '_0_' in k)
+    app.session_state[key] = {'edited_rows': {0: {'Цена Allegro PLN': 99.0}}, 'added_rows': [], 'deleted_rows': []}
+    app.run()
+    assert not app.exception
+    saved = load_analysis()
+    assert len(saved) == 26
+    assert saved['_position_id'].tolist() == before['_position_id'].tolist()
+    assert saved[PHOTO].tolist() == before[PHOTO].tolist()
+    assert saved[NAME_PL].tolist() == before[NAME_PL].tolist()
+    assert saved.iloc[25]['Цена Allegro PLN'] == 99
+    assert saved.iloc[:25]['Цена Allegro PLN'].tolist() == before.iloc[:25]['Цена Allegro PLN'].tolist()
