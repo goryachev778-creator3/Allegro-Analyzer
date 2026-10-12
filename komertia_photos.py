@@ -45,7 +45,6 @@ def source_lp(row):
     from komertia_details import _source_key, NAME_PL
     assets = Path(__file__).parent / 'assets'
     catalog = json.loads((assets / 'komertia-screenshots.json').read_text())['rows']
-    titles = json.loads((assets / 'polish-names.json').read_text())
     position = value(row.get('_position_id')).strip()
     identities = [r for r in catalog if position in
                   (r['position_id'], f"komertia-screenshot-oct2026:{r['source_row']}")]
@@ -76,9 +75,6 @@ def source_lp(row):
         except (ValueError, TypeError, IndexError):
             pass
     candidates = [r for r in catalog if _source_key(r['Produkt']) in sources]
-    if not candidates and value(row.get(NAME_PL)).strip():
-        title = _source_key(row[NAME_PL])
-        candidates = [r for r in catalog if _source_key(titles.get(r['position_id'])) == title]
     variant = _source_key(row.get('Wariant'))
     if variant and candidates:
         candidates = [r for r in candidates if _source_key(r['Wariant']) == variant]
@@ -176,12 +172,12 @@ def auto_photo_preview(frame, photos):
     """Resolve active saved products; never guess from their display position."""
     from storage import ensure_ids
     from analyzer import number
-    from komertia_details import NAME_PL
+    from komertia_details import NAME_PL, original_label
     current = ensure_ids(frame.reset_index(drop=True))
     matches, unresolved, excluded = [], [], []
     for _, row in current.iterrows():
         position = row['_position_id']
-        name = value(row.get(NAME_PL))
+        name = original_label(row)
         quantity = next((row[c] for c in ('Ilość', 'ilosc', 'Количество', 'quantity') if c in row and value(row[c]).strip()), None)
         if quantity is not None and number(quantity) == 0:
             excluded.append(position)
@@ -199,7 +195,7 @@ def auto_photo_preview(frame, photos):
         if lp is None or lp not in photos:
             unresolved.append({'position_id': position, 'name': name, 'error': reason or f'В ZIP нет LP {lp}.'})
             continue
-        matches.append({'position_id': position, 'name': name, 'lp': lp, 'photo': photos[lp]})
+        matches.append({'position_id': position, 'name': name, 'product': value(row.get('Produkt')), 'variant': value(row.get('Wariant')), 'lp': lp, 'photo': photos[lp]})
     return {'matches': matches, 'unresolved': unresolved, 'excluded': excluded, 'ids': current['_position_id'].tolist()}
 
 

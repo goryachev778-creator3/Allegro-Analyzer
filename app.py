@@ -10,7 +10,9 @@ importlib.reload(komertia_photos)
 import manual_photo_mapping
 importlib.reload(manual_photo_mapping)
 importlib.reload(storage)
-from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table
+from komertia_details import PHOTO, FULL_NAME, NAME_PL, DETAILS, ALIASES, enrich_details, import_details, uploaded_photo, full_table, original_label
+import photo_grid as photo_grid_module
+importlib.reload(photo_grid_module)
 from photo_grid import photo_grid, apply_photo_event
 from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs
@@ -153,16 +155,19 @@ with settings_tab:
                 detected_id = next((c for c in raw.columns if str(c).strip().casefold() in ("id", "row id", "variant id", "id wariantu", "id pozycji")), None)
                 remembered_id = preferences.get("row_id", detected_id)
                 row_id = st.selectbox("Стабильный ID строки (если есть)", options, index=options.index(remembered_id) if remembered_id in options else 0, key=profile + "row_id")
+                detected_lp = next((c for c in raw.columns if str(c).strip().casefold() in ("lp", "lp komertia", "source_row")), None)
+                remembered_lp = preferences.get("source_lp", detected_lp)
+                source_lp_column = st.selectbox("Исходный LP Komertia", options, index=options.index(remembered_lp) if remembered_lp in options else 0, key=profile + "source_lp")
                 detected_costs = komertia_columns(raw)
                 is_komertia = bool(detected_costs["final_unit"] or (detected_costs["quantity"] and detected_costs["total"]))
                 use_komertia = st.checkbox("Окончательная закупка Komertia: Cena szt. (или Razem ÷ Ilość)", value=is_komertia, disabled=not is_komertia, key=profile + "komertia_costs")
                 st.caption("В «Закупка PLN» записывается окончательная стоимость штуки с доставкой и таможней. Включённые расходы повторно не начисляются. Цены Allegro и комиссии сохраняются.")
                 apply = st.form_submit_button("Загрузить в таблицу", type="primary")
             if apply:
-                write(profile, {"mapping": mapping, "defaults": defaults, "rate": rate, "stock": stock, **identity_columns, "row_id": row_id})
+                write(profile, {"mapping": mapping, "defaults": defaults, "rate": rate, "stock": stock, **identity_columns, "row_id": row_id, "source_lp": source_lp_column})
                 if mapping["Товар"] != options[0]:
                     product_col = identity_columns["Produkt"] if identity_columns["Produkt"] != options[0] else mapping["Товар"]
-                    raw = identify_rows(raw, product_col, identity_columns["Wariant"] if identity_columns["Wariant"] != options[0] else None, row_id if row_id != options[0] else None, stock if stock != options[0] else None)
+                    raw = identify_rows(raw, product_col, identity_columns["Wariant"] if identity_columns["Wariant"] != options[0] else None, row_id if row_id != options[0] else source_lp_column if source_lp_column != options[0] else None, stock if stock != options[0] else None)
                 raw, skipped = filter_stock(raw, None if stock == options[0] else stock)
                 if skipped:
                     st.info(f"Исключено позиций с нулевым остатком: {skipped}")
@@ -188,6 +193,12 @@ with settings_tab:
                     for metadata in ("Produkt", "Wariant", "_position_id"):
                         if metadata in raw:
                             frame[metadata] = raw[metadata]
+                    if source_lp_column != options[0]:
+                        source_lps = raw[source_lp_column].map(number)
+                        if (source_lps <= 0).any() or (source_lps != source_lps.astype(int)).any():
+                            errors.append("Исходные LP должны быть положительными целыми числами.")
+                        else:
+                            frame['source_row'] = source_lps.astype(int)
                     frame = import_details(frame, raw, mapping)
                     frame["Закупка PLN"] *= rate
                     if use_komertia and not errors:
@@ -252,7 +263,7 @@ with settings_tab:
 from storage import ensure_ids
 working = ensure_ids(enrich_details(st.session_state["products"]).drop(columns=["№"], errors="ignore"))
 if "Produkt" not in working:
-    working["Produkt"] = working["Товар"]
+    working["Produkt"] = ""
 if "Wariant" not in working:
     working["Wariant"] = ""
 with settings_tab:
@@ -277,7 +288,7 @@ with main_tab:
     mask = calculated["Статус"].isin(statuses)
     if search:
         matches = pd.Series(False, index=working.index)
-        for column in (NAME_PL, "SKU", FULL_NAME, "Wariant"):
+        for column in ("Produkt", "SKU", FULL_NAME, "Wariant"):
             if column in working:
                 matches |= working[column].astype(str).str.contains(search, case=False, regex=False, na=False)
         mask &= matches
@@ -288,15 +299,16 @@ with main_tab:
     editor_frame = editor_frame.loc[mask].reset_index(drop=True)
     st.subheader("Товары")
     st.caption(f"Показано: {len(editor_frame)} из {len(working)}")
-    column_order = ["№", PHOTO, NAME_PL, "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
+    column_order = ["№", PHOTO, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
     if show_expenses:
         column_order += [c for c in NUMERIC + ["SKU", "Статус"] if c not in column_order]
-        hidden_originals = {"Товар", "Produkt", "Wariant", FULL_NAME, "_position_id", "_komertia_final_cost"}
+        hidden_originals = {"Товар", NAME_PL, FULL_NAME, "_position_id", "_komertia_final_cost"}
         column_order += [c for c in working.columns if c not in column_order and c not in hidden_originals]
     config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
     config["№"] = st.column_config.NumberColumn("№", width=55, disabled=True, format="%d", pinned=True)
     config[PHOTO] = st.column_config.ImageColumn(PHOTO, width="medium")
-    config[NAME_PL] = st.column_config.TextColumn(NAME_PL, width="large")
+    config["Produkt"] = st.column_config.TextColumn("Produkt", width="large", disabled=True)
+    config["Wariant"] = st.column_config.TextColumn("Wariant", width="large", disabled=True)
     for column in ("Прибыль PLN", "Маржа %"):
         config[column] = st.column_config.NumberColumn(column, format="%.2f", disabled=True)
     config.update({c: None for c in editor_frame.columns if c not in column_order})
@@ -306,7 +318,7 @@ with main_tab:
         import hashlib
         editor_key += "_" + hashlib.sha256(str((search, statuses)).encode()).hexdigest()[:12]
     visible_edits = st.data_editor(editor_frame, column_order=column_order, column_config=config,
-        disabled=["№", PHOTO, "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
+        disabled=["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
         num_rows="fixed" if filtered else "dynamic", hide_index=True, height=600, width="stretch", key=editor_key)
     changed = visible_edits.drop(columns=["№", "Прибыль PLN", "Маржа %", "Статус"], errors="ignore")
     if filtered:
@@ -344,8 +356,8 @@ with main_tab:
             st.error(f"Проверьте значения в таблице: {exc}")
 
 with settings_tab:
-    st.subheader("Фото и названия товаров")
-    st.caption("Одно польское название на товар. Указаны только известные характеристики; отсутствующие параметры не дополняются. Оригинальные данные Komertia сохранены отдельно.")
+    st.subheader("Фото и исходные данные Komertia")
+    st.caption("Оригинальные Produkt и Wariant сохранены без перевода.")
     from storage import ensure_ids
     photo_frame = ensure_ids(edited)
     photo_event = photo_grid(photo_frame, st.session_state.get("photo_error", ""))
@@ -361,26 +373,22 @@ with settings_tab:
             st.session_state["photo_error"] = str(exc)
             st.error(str(exc))
     if not edited.empty:
-        with st.expander("Фото, польское название и исходные данные Komertia"):
+        with st.expander("Фото и исходные данные Komertia"):
             from storage import ensure_ids
             detail_frame = ensure_ids(edited)
             positions = list(detail_frame['_position_id'])
-            labels = {row['_position_id']: f"{i + 1}. {row[NAME_PL] or 'Uzupełnij nazwę po polsku'}" for i, row in detail_frame.iterrows()}
+            labels = {row['_position_id']: f"{i + 1}. {original_label(row) or 'Brak nazwy w danych źródłowych'}" for i, row in detail_frame.iterrows()}
             selected = st.selectbox("Товар и вариант", positions, format_func=lambda item: labels[item], key="detail_position")
             row_index = positions.index(selected)
             row = detail_frame.iloc[row_index]
             st.text("Оригинальный Produkt: " + str(row.get("Produkt", "")))
             st.text("Оригинальный Wariant: " + str(row.get("Wariant", "")))
             with st.form("details_" + selected + "_" + str(st.session_state.get("editor_revision", 0))):
-                polish_title = st.text_area(NAME_PL, value=row[NAME_PL], help="Короткое название на польском языке с известными характеристиками.")
                 name = st.text_area(FULL_NAME, value=row[FULL_NAME], help="Вставьте оригинальное полное название. Пустое поле остаётся пустым.")
                 photo = st.file_uploader(PHOTO, type=["png", "jpg", "jpeg", "webp"], help="Оригинальное фото до 5 МБ; хранится вместе с товаром в существующей базе.")
                 save_details = st.form_submit_button("Сохранить фото и название")
             if save_details:
                 try:
-                    if __import__("re").search(r"[А-Яа-яЁё]", polish_title):
-                        raise ValueError("Введите короткое название на польском языке.")
-                    detail_frame.loc[row_index, NAME_PL] = polish_title
                     detail_frame.loc[row_index, FULL_NAME] = name
                     if photo is not None:
                         detail_frame.loc[row_index, PHOTO] = uploaded_photo(photo.getvalue())

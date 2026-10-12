@@ -1,6 +1,6 @@
 <!doctype html><html lang="pl"><head><meta charset="utf-8"><style>
 body{font:14px system-ui;margin:0;color:#172554;background:#f8fafc} .scroll{max-height:570px;overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border:1px solid #cbd5e1;vertical-align:middle}th{position:sticky;top:0;background:#e2e8f0;z-index:1}td.name{white-space:pre-wrap;overflow-wrap:anywhere}td.photo{width:200px;outline-offset:-3px}td.photo:focus{outline:3px solid #2563eb;background:#eff6ff}button{cursor:pointer;border:1px solid #94a3b8;border-radius:6px;background:white;padding:5px 9px;color:#172554}.thumb{display:block;margin-bottom:6px;padding:0;line-height:0}.thumb img{width:90px;height:90px;object-fit:contain}small{display:block;color:#475569;margin:5px 0}.paste-target{margin:6px 0;font-size:12px;border:1px dashed #94a3b8;border-radius:4px;padding:7px;cursor:text}.paste-target:focus{outline:2px solid #2563eb}dialog{width:min(90%,800px);border:1px solid #94a3b8;border-radius:8px;padding:10px}dialog img{display:block;max-width:100%;max-height:550px;object-fit:contain;margin:auto}dialog::backdrop{background:#0008}#status{padding:8px;white-space:pre-wrap}input[type=file]{display:none}
-</style></head><body><div id="status" role="status" aria-live="polite"></div><div class="scroll"><table><thead><tr><th>№</th><th>Фото Komertia</th><th>Nazwa produktu</th></tr></thead><tbody id="rows"></tbody></table></div><dialog id="preview"><button id="close">Zamknij</button><img id="large" alt="Zdjęcie produktu Komertia"></dialog><script>
+</style></head><body><div id="status" role="status" aria-live="polite"></div><div class="scroll"><table><thead><tr><th>№</th><th>Фото Komertia</th><th>Produkt · Wariant</th></tr></thead><tbody id="rows"></tbody></table></div><dialog id="preview"><button id="close">Zamknij</button><img id="large" alt="Zdjęcie produktu Komertia"></dialog><script>
 const send=(type,rest={})=>parent.postMessage({isStreamlitMessage:true,type,...rest},'*');
 const status=document.getElementById('status');
 let disabled=false;
@@ -30,7 +30,7 @@ window.addEventListener('message',e=>{
  cell.addEventListener('paste',event=>{event.preventDefault();const file=Array.from(event.clipboardData?.items||[]).find(item=>item.kind==='file'&&item.type.startsWith('image/'))?.getAsFile();if(file)upload(file,row.id);else status.textContent='В буфере нет изображения. На сайте Komertia выберите «Копировать изображение», либо загрузите файл.';});
  const file=document.createElement('input');file.type='file';file.accept='image/png,image/jpeg,image/webp';file.onchange=()=>{if(file.files[0])upload(file.files[0],row.id)};
  const choose=document.createElement('button');choose.textContent='Загрузить файл';choose.disabled=disabled;choose.onclick=()=>file.click();cell.append(choose,file);tr.append(cell);
- const name=document.createElement('td');name.className='name';name.textContent=row.name||'Uzupełnij nazwę po polsku';tr.append(name);tbody.append(tr);
+ const name=document.createElement('td');name.className='name';name.textContent=row.name||'Brak nazwy w danych źródłowych';tr.append(name);tbody.append(tr);
  });height();
 });send('streamlit:componentReady',{apiVersion:1});
 </script></body></html>

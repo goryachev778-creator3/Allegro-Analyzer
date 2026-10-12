@@ -65,11 +65,11 @@ def test_polish_titles_preserve_all_originals_and_26_positions():
     frame[FULL_NAME] = 'Oryginalna pełna nazwa Komertia'
     before = frame.copy()
     enriched = enrich_details(frame)
-    assert len(enriched) == 26 and enriched[NAME_PL].str.len().gt(0).all()
-    assert not enriched[NAME_PL].str.contains(r'[А-Яа-яЁё]|…', regex=True).any()
+    assert len(enriched) == 26 and enriched['Produkt'].tolist() == before['Produkt'].tolist()
+    assert enriched[NAME_PL].eq('').all()
     pd.testing.assert_frame_equal(enriched[before.columns], before)
-    assert '50 kg' in enriched.iloc[2][NAME_PL]
-    assert '20 × 20 cm' in enriched.iloc[6][NAME_PL]
+    assert enriched.iloc[2]['Produkt'] == before.iloc[2]['Produkt']
+    assert enriched.iloc[6]['Wariant'] == before.iloc[6]['Wariant']
     enriched.loc[0, NAME_PL] = 'Pokrowiec na ubrania, własna nazwa'
     save_analysis(enriched)
     reimported = merge_import(frame, load_analysis())

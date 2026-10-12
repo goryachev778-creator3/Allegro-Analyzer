@@ -181,7 +181,7 @@ def test_auto_can_reuse_exact_manually_confirmed_zip_photo_without_original_lp()
     frame = pd.DataFrame([{'_position_id': 'saved-manual-position', 'Товар': '', 'SKU': '', NAME_PL: 'Zachowana nazwa polska', PHOTO: photos[7]}])
     plan = auto_photo_preview(frame, photos)
     assert not plan['unresolved'] and plan['matches'][0]['lp'] == 7
-    assert plan['matches'][0]['name'] == 'Zachowana nazwa polska'
+    assert plan['matches'][0]['name'] == ''
     duplicate = {7: photos[7], 8: photos[7]}
     plan = auto_photo_preview(frame, duplicate)
     assert plan['unresolved'] and not plan['matches']

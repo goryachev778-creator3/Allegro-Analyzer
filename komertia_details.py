@@ -38,45 +38,50 @@ def _source_key(item):
     return ' '.join(unicodedata.normalize('NFKC', value(item)).casefold().replace('...', '…').split())
 
 
-def polish_name(row):
+def original_record(row):
+    """Recover exact original text; preserve all unrelated saved fields."""
     from pathlib import Path
     import json
-    assets = Path(__file__).parent / 'assets'
-    names = json.loads((assets / 'polish-names.json').read_text())
-    catalog = json.loads((assets / 'komertia-screenshots.json').read_text())['rows']
+    result = dict(row)
+    for target in ('Produkt', 'Wariant'):
+        aliases = sorted([c for c in row if str(c).strip().casefold() == target.casefold()], key=lambda c: str(c) != target.upper())
+        source = next((row[c] for c in aliases if value(row[c]).strip()), '')
+        if value(source).strip():
+            result[target] = value(source)
+    catalog = json.loads((Path(__file__).parent / 'assets' / 'komertia-screenshots.json').read_text())['rows']
     position = value(row.get('_position_id'))
-    known = names.get(position)
-    if not known and position.startswith('komertia-screenshot-oct2026:'):
-        original = next((r for r in catalog if str(r['source_row']) == position.split(':')[-1]), None)
-        if original:
-            known = names.get(original['position_id'])
-    if known:
-        return known
-    # Historical saved analyses can have hash/legacy IDs instead of catalog UUIDs.
-    # Match original text, never row order, costs or prices. Identical source
-    # descriptions may share a title; conflicting variant titles are ambiguous.
-    sources = {_source_key(row.get(c)) for c in ('Produkt', 'Товар', FULL_NAME)} - {''}
-    variant = _source_key(row.get('Wariant'))
-    exact = {names[r['position_id']] for r in catalog
-             if _source_key(r['Produkt']) in sources
-             and _source_key(r['Wariant']) == variant}
-    if len(exact) == 1:
-        return exact.pop()
-    if not variant or variant == '—':
-        candidates = {names[r['position_id']] for r in catalog if _source_key(r['Produkt']) in sources}
-        if len(candidates) == 1:
-            return candidates.pop()
-    # Source text is never overwritten. Unknown products need a supplied Polish title.
-    source = value(row.get('Produkt')) or value(row.get('Товар'))
-    translations = {'Органайзер': 'Organizer', 'Лампа': 'Lampa', 'Чехол': 'Pokrowiec'}
-    if source in translations:
-        return translations[source]
-    if re.search(r'[А-Яа-яЁё]', source) or '…' in source or '...' in source:
-        return ''
-    variant = complete_name(row.get('Wariant'))
-    if re.search(r'[А-Яа-яЁё]', variant) or variant.strip() == '—':
-        variant = ''
-    return ', '.join(part for part in (source, variant) if part)
+    lp = value(row.get('source_row')).strip()
+    candidates = [r for r in catalog if position in (r['position_id'], f"komertia-screenshot-oct2026:{r['source_row']}")]
+    if not candidates and lp:
+        try:
+            candidates = [r for r in catalog if float(lp) == r['source_row']]
+        except ValueError:
+            pass
+    if not candidates:
+        source = value(result.get('Produkt')) or value(row.get('Товар'))
+        if source:
+            candidates = [r for r in catalog if _source_key(r['Produkt']) == _source_key(source) and (not value(result.get('Wariant')).strip() or _source_key(r['Wariant']) == _source_key(result['Wariant']))]
+    if lp and candidates:
+        try:
+            candidates = [r for r in candidates if float(lp) == r['source_row']]
+        except ValueError:
+            candidates = []
+    if len(candidates) == 1:
+        for column in ('Produkt', 'Wariant'):
+            if not value(result.get(column)).strip():
+                result[column] = candidates[0][column]
+    for column in ('Produkt', 'Wariant'):
+        result.setdefault(column, '')
+    return result
+
+
+def original_label(row):
+    return ' · '.join(value(row.get(c)) for c in ('Produkt', 'Wariant') if value(row.get(c)).strip())
+
+
+def polish_name(row):
+    # Compatibility only: never translate or invent product names.
+    return original_label(original_record(row))
 
 
 def enrich_details(frame):
@@ -88,9 +93,13 @@ def enrich_details(frame):
             result[field] = ''
         else:
             result[field] = result[field].map(value)
+    for column in ('Produkt', 'Wariant'):
+        if column not in result:
+            result[column] = ''
     for index, row in result.iterrows():
-        if not value(row[NAME_PL]).strip():
-            result.loc[index, NAME_PL] = polish_name(row)
+        original = original_record(row)
+        for column in ('Produkt', 'Wariant'):
+            result.loc[index, column] = original[column]
     return result
 
 

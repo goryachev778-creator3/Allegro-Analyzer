@@ -104,29 +104,20 @@ def save_analysis(frame):
 
 
 def restore_product_names():
-    """Repair only blank Polish titles in the existing analysis transaction."""
-    from komertia_details import NAME_PL, polish_name, value
+    """Persist original Produkt/Wariant without changing identities or prices."""
+    from komertia_details import original_record
     db = state_connection()
     try:
         with db:
-            # Serialize PostgreSQL repair against concurrent analysis writes.
             if is_external():
                 db.execute("SELECT key FROM allegro_state WHERE key = %s FOR UPDATE", ('analysis',))
             records = read_from(db, 'analysis')
-            changed = False
-            for row in records or []:
-                if not value(row.get(NAME_PL)).strip():
-                    recovered = polish_name(row)
-                    if recovered:
-                        row[NAME_PL] = recovered
-                        changed = True
+            restored = [original_record(row) for row in records or []]
             from komertia_photos import recover_source_lps
-            recovered_rows = recover_source_lps(records or [])
-            if records is not None and recovered_rows != records:
-                records = recovered_rows
-                changed = True
-            if changed:
-                write_to(db, 'analysis', records)
+            restored = recover_source_lps(restored)
+            if records is not None and restored != records:
+                write_to(db, 'analysis', restored)
+                records = restored
             return records
     finally:
         db.close()
@@ -231,8 +222,9 @@ def identify_rows(raw, product_column, variant_column=None, source_id_column=Non
         counts[digest] = occurrence + 1
         ids.append(exported or f'{digest}:{occurrence}')
     result['_position_id'] = ids
-    result['Produkt'] = raw[product_column].map(text)
-    result['Wariant'] = raw[variant_column].map(text) if variant_column else ''
+    from komertia_details import value
+    result['Produkt'] = raw[product_column].map(value)
+    result['Wariant'] = raw[variant_column].map(value) if variant_column else ''
     return result
 
 

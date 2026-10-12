@@ -3,7 +3,7 @@ import base64
 import hashlib
 import pandas as pd
 import streamlit as st
-from komertia_details import NAME_PL, enrich_details
+from komertia_details import NAME_PL, enrich_details, original_label
 from komertia_photos import read_photo_zip, save_manual_zip_photos, auto_photo_preview, save_confirmed_auto_photos
 from storage import ensure_ids, is_external
 
@@ -18,9 +18,9 @@ def render_manual_mapping(payload, frame):
         plan = saved_preview['plan']
         st.subheader('Предварительный результат автоматического сопоставления')
         st.caption(f"Сопоставлено: {len(plan['matches'])} · без однозначного совпадения: {len(plan['unresolved'])} · исключено с количеством 0: {len(plan['excluded'])}")
-        preview_table = pd.DataFrame([{'Nazwa produktu': r['name'], 'Исходный LP Komertia': r['lp'], 'Фото Komertia': r['photo']} for r in plan['matches']])
+        preview_table = pd.DataFrame([{'Produkt': r['product'], 'Wariant': r['variant'], 'Исходный LP Komertia': r['lp'], 'Фото Komertia': r['photo']} for r in plan['matches']])
         if not preview_table.empty:
-            st.dataframe(preview_table, column_config={'Фото Komertia': st.column_config.ImageColumn('Фото Komertia', width='medium'), 'Nazwa produktu': st.column_config.TextColumn('Nazwa produktu', width='large')}, hide_index=True, width='stretch', height=500)
+            st.dataframe(preview_table, column_config={'Фото Komertia': st.column_config.ImageColumn('Фото Komertia', width='medium'), 'Produkt': st.column_config.TextColumn('Produkt', width='large'), 'Wariant': st.column_config.TextColumn('Wariant', width='large')}, hide_index=True, width='stretch', height=500)
         if plan['unresolved']:
             st.warning('Некоторым товарам не хватает исходных данных. Выберите их фото вручную ниже; после сохранения ручных фото автоматическое сопоставление сможет использовать точные изображения из ZIP.')
             for item in plan['unresolved']:
@@ -49,7 +49,7 @@ def render_manual_mapping(payload, frame):
     selections = {}
     for index, row in current.iterrows():
         name, choice, preview = st.columns([3, 2, 1])
-        name.write(f"{index + 1}. {row[NAME_PL] or 'Nazwa nieuzupełniona'}")
+        name.write(f"{index + 1}. {original_label(row) or 'Brak nazwy w danych źródłowych'}")
         lp = choice.selectbox(f'Фото для товара {index + 1}', [None] + sorted(photos), format_func=lambda item: 'Без изменения' if item is None else f'LP {item:02}', key=f'manual_photo_{revision}_{row["_position_id"]}')
         if lp is not None:
             selections[row['_position_id']] = lp

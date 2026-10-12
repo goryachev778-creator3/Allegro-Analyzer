@@ -72,11 +72,11 @@ def test_display_order_numbers_and_saved_values():
     assert not app.exception
     displayed = app.dataframe[0].value
     assert list(displayed['№']) == [1, 2, 3]
-    assert list(displayed['Produkt']) == list(displayed['Товар'])
+    assert list(displayed['Produkt']) == ['', '', '']
     import json
     order = list(app.dataframe[0].proto.column_order)
-    assert order[:6] == ['№', 'Фото Komertia', 'Nazwa produktu', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
-    assert not {'Produkt', 'Wariant', 'Товар', 'Полное название Komertia'} & set(order)
+    assert order[:7] == ['№', 'Фото Komertia', 'Produkt', 'Wariant', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
+    assert not {'Nazwa produktu', 'Товар', 'Полное название Komertia'} & set(order)
     app.session_state['editor_1'] = {'edited_rows': {0: {'Цена Allegro PLN': 150.0, 'Комиссия %': 9.0}}, 'added_rows': [], 'deleted_rows': []}
     app.run()
     assert not app.exception
