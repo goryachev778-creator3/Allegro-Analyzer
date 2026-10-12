@@ -1,4 +1,5 @@
 from io import BytesIO
+from compact_table import available_width, widths, LABELS
 import importlib
 import komertia_details
 import storage
@@ -267,7 +268,24 @@ if "Produkt" not in working:
 if "Wariant" not in working:
     working["Wariant"] = ""
 with settings_tab:
-    show_expenses = st.checkbox("Показывать все расходы и служебные поля в основной таблице", value=False)
+    show_expenses = st.checkbox("Дополнительные расходы товара", value=False)
+    if show_expenses and not working.empty:
+        expense_ids = working.loc[~working.apply(is_order_total, axis=1), '_position_id'].tolist()
+        expense_labels = {row['_position_id']: original_label(row) for _, row in working.iterrows()}
+        expense_position = st.selectbox("Товар для редактирования расходов", expense_ids, format_func=lambda item: expense_labels[item], key="expense_product")
+        expense_row = working.loc[working['_position_id'].eq(expense_position)].iloc[0]
+        with st.form("extra_expenses"):
+            expense_values = {}
+            for column in NUMERIC:
+                if column not in ("Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN"):
+                    expense_values[column] = st.number_input(column, min_value=0.0, value=float(number(expense_row[column])))
+            save_expenses = st.form_submit_button("Сохранить расходы")
+        if save_expenses:
+            updated_expenses = working.copy()
+            for column, value in expense_values.items():
+                updated_expenses.loc[updated_expenses['_position_id'].eq(expense_position), column] = value
+            if replace_analysis(updated_expenses):
+                st.rerun()
 with main_tab:
     st.subheader("Анализ прибыльности")
     metrics = st.columns(4)
@@ -301,17 +319,17 @@ with main_tab:
     st.subheader("Товары")
     st.caption(f"Показано: {len(editor_frame)} из {int(product_rows.sum())}")
     column_order = ["№", PHOTO, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
-    if show_expenses:
-        column_order += [c for c in NUMERIC + ["SKU", "Статус"] if c not in column_order]
-        hidden_originals = {"Товар", NAME_PL, FULL_NAME, "_position_id", "_komertia_final_cost"}
-        column_order += [c for c in working.columns if c not in column_order and c not in hidden_originals]
     config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
-    config["№"] = st.column_config.NumberColumn("№", width=55, disabled=True, format="%d", pinned=True)
-    config[PHOTO] = st.column_config.ImageColumn(PHOTO, width="medium")
-    config["Produkt"] = st.column_config.TextColumn("Produkt", width="large", disabled=True)
-    config["Wariant"] = st.column_config.TextColumn("Wariant", width="large", disabled=True)
-    for column in ("Прибыль PLN", "Маржа %"):
-        config[column] = st.column_config.NumberColumn(column, format="%.2f", disabled=True)
+    sizes = widths(available_width())
+    config["№"] = st.column_config.NumberColumn("№", width=sizes["№"], disabled=True, format="%d", pinned=True)
+    config[PHOTO] = st.column_config.ImageColumn("Фото", width=sizes[PHOTO])
+    config["Produkt"] = st.column_config.TextColumn("Produkt", width=sizes["Produkt"], disabled=True)
+    config["Wariant"] = st.column_config.TextColumn("Wariant", width=sizes["Wariant"], disabled=True)
+    for column, label in LABELS.items():
+        config[column] = st.column_config.NumberColumn(label, width=sizes[column], format="%.2f",
+            disabled=column in ("Прибыль PLN", "Маржа %"),
+            min_value=None if column in ("Прибыль PLN", "Маржа %") else 0.0,
+            max_value=100.0 if column == "Комиссия %" else None)
     config.update({c: None for c in editor_frame.columns if c not in column_order})
     filtered = not bool(mask.all())
     editor_key = f"editor_{st.session_state.get('editor_revision', 0)}"
