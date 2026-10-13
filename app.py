@@ -5,6 +5,8 @@ importlib.reload(compact_table)
 from compact_table import available_width, widths, LABELS
 import komertia_details
 import storage
+import product_duplicates
+importlib.reload(product_duplicates)
 import photo_enhancement
 importlib.reload(photo_enhancement)
 import komertia_photos
@@ -204,6 +206,11 @@ with settings_tab:
                             errors.append("Исходные LP должны быть положительными целыми числами.")
                         else:
                             frame['source_row'] = source_lps.astype(int)
+                    # Preserve source specifications so different models/colours/sizes cannot collapse.
+                    for column in raw.columns:
+                        normalized_column = str(column).strip().casefold()
+                        if normalized_column in {"kolor", "color", "цвет", "rozmiar", "size", "размер", "model", "модель", "komplet", "комплектация", "zestaw"}:
+                            frame[column] = raw[column].to_numpy()
                     frame = import_details(frame, raw, mapping)
                     frame["Закупка PLN"] *= rate
                     if use_komertia and not errors:
@@ -213,13 +220,9 @@ with settings_tab:
                     elif (frame["Комиссия %"] > 100).any():
                         st.error("Комиссия Allegro не может превышать 100%.")
                     else:
-                        merged = merge_import(frame, load_analysis())
-                        if use_komertia:
-                            for cost in NUMERIC:
-                                if cost not in ("Цена Allegro PLN", "Комиссия %", "Комиссия PLN"):
-                                    merged[cost] = frame[cost].to_numpy()
+                        merged, skipped = product_duplicates.checked_import(frame, load_analysis())
                         if replace_analysis(merged):
-                            st.success("Товары загружены. Сохранённые поля существующих товаров сохранены; новые товары добавлены.")
+                            st.success(f"Товары загружены. Обнаружено и пропущено дубликатов: {skipped}. Существующие поля сохранены.")
         except Exception as exc:
             st.error(f"Не удалось прочитать файл: {exc}")
 
@@ -238,11 +241,15 @@ with settings_tab:
     pending = st.session_state.get("pending_action")
     if pending:
         if pending == "screenshots":
-            st.info("Загрузить 29 позиций из ваших скриншотов? Нулевые остатки исключены. Общие расходы распределены по количеству. Названия сокращены как на снимках; строка Komertia указана отдельно. Текущие данные заменяются, а сохранённые правки ранее загруженных позиций этого набора сохраняются.")
+            st.info("Загрузить 29 позиций из ваших скриншотов? Нулевые остатки исключены. Общие расходы распределены по количеству. Названия сокращены как на снимках; строка Komertia указана отдельно. Существующие товары и правки сохраняются, повторные позиции пропускаются.")
         st.warning("Заменить текущий анализ демонстрационным примером?" if pending == "demo" else "Загрузить таблицу из скриншотов?" if pending == "screenshots" else "Удалить все товары из текущего анализа? Это действие нельзя отменить.")
         yes, no = st.columns(2)
         if yes.button("Подтвердить загрузку" if pending == "screenshots" else "Подтвердить замену" if pending == "demo" else "Подтвердить сброс"):
-            target = merge_import(load_catalog(), load_analysis()) if pending == "screenshots" else sample if pending == "demo" else pd.DataFrame(columns=INPUTS)
+            if pending == "screenshots":
+                target, skipped_duplicates = product_duplicates.checked_import(load_catalog(), load_analysis())
+                st.session_state["import_duplicate_count"] = skipped_duplicates
+            else:
+                target = sample if pending == "demo" else pd.DataFrame(columns=INPUTS)
             if replace_analysis(target):
                 st.rerun()
         if no.button("Отмена"):
@@ -254,6 +261,21 @@ if "products" not in st.session_state or st.session_state["products"].empty:
     st.stop()
 
 with settings_tab:
+    if "import_duplicate_count" in st.session_state:
+        st.success(f"Импорт: обнаружено и пропущено дубликатов: {st.session_state['import_duplicate_count']}.")
+    with st.expander("Проверка дубликатов товаров"):
+        try:
+            duplicate_result = product_duplicates.render_review(st.session_state["products"])
+            if duplicate_result is not None:
+                deduplicated, removed = duplicate_result
+                st.session_state["products"] = deduplicated
+                st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
+                st.session_state["duplicate_success"] = f"Удалено повторных строк: {removed}. Заполненные данные сохранены."
+                st.rerun()
+            if st.session_state.get("duplicate_success"):
+                st.success(st.session_state["duplicate_success"])
+        except Exception as exc:
+            st.error(str(exc))
     with st.expander("Импорт фотографий Komertia по исходным LP из ZIP"):
         photos_zip = st.file_uploader("ZIP с файлами Komertia_LP_01.png–Komertia_LP_38.png", type=["zip"], key="lp_photo_zip")
         st.caption("Фото сопоставляются по исходному LP Komertia, а не по текущему номеру строки. Названия, цены, расчёты и порядок товаров сохраняются.")
