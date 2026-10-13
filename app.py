@@ -1,8 +1,12 @@
 from io import BytesIO
-from compact_table import available_width, widths, LABELS
+import compact_table
 import importlib
+importlib.reload(compact_table)
+from compact_table import available_width, widths, LABELS
 import komertia_details
 import storage
+import photo_enhancement
+importlib.reload(photo_enhancement)
 import komertia_photos
 # Streamlit reruns keep imported modules cached after a source update.
 # Refresh the pure metadata/storage definitions before binding their functions.
@@ -316,8 +320,14 @@ with main_tab:
         editor_frame[column] = calculated[column].to_numpy()
     editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
     editor_frame = editor_frame.loc[mask].reset_index(drop=True)
+    editor_frame[PHOTO] = editor_frame.apply(photo_enhancement.best_available_original, axis=1) if not editor_frame.empty else editor_frame[PHOTO]
+    st.markdown("<style>.gdg-clip-region img{min-width:0!important;min-height:0!important;width:auto!important;height:auto!important;max-width:100%!important;max-height:70vh!important;object-fit:contain!important}</style>", unsafe_allow_html=True)
     st.subheader("Товары")
     st.caption(f"Показано: {len(editor_frame)} из {int(product_rows.sum())}")
+    resolutions = [photo_enhancement.original_resolution(photo) for photo in editor_frame[PHOTO]]
+    low_resolution = sum(1 for size in resolutions if size and max(size) < 800)
+    if low_resolution:
+        st.caption(f"Фото с низким исходным разрешением: {low_resolution}. Наведите на фото для просмотра оригинала и его размера; маленькие исходники не растягиваются.")
     column_order = ["№", PHOTO, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
     config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
     sizes = widths(available_width())
@@ -338,8 +348,9 @@ with main_tab:
         editor_key += "_" + hashlib.sha256(str((search, statuses)).encode()).hexdigest()[:12]
     visible_edits = st.data_editor(editor_frame, column_order=column_order, column_config=config,
         disabled=["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
-        num_rows="fixed" if filtered else "dynamic", hide_index=True, height=600, width="stretch", key=editor_key)
+        num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
     changed = visible_edits.drop(columns=["№", "Прибыль PLN", "Маржа %", "Статус"], errors="ignore")
+    changed = photo_enhancement.restore_original_photos(changed, working)
     if filtered:
         edited = working.copy()
         for _, row in changed.iterrows():
@@ -422,6 +433,4 @@ with settings_tab:
                 except ValueError as exc:
                     st.error(str(exc))
     st.download_button("Скачать резервную копию Excel", backup_excel(edited), "allegro-backup.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", help="Рабочие поля и постоянные идентификаторы. Позволяет восстановить цены и комиссии после пересборки.")
-    import photo_enhancement
-    importlib.reload(photo_enhancement)
     photo_enhancement.render_enhancement(ensure_ids(edited))

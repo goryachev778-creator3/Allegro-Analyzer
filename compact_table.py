@@ -1,13 +1,16 @@
 """Allocate native editable grid widths to the actual available main-column width."""
 from pathlib import Path
 import streamlit.components.v1 as components
+import streamlit as st
 
 LABELS = {'Закупка PLN':'Закупка', 'Цена Allegro PLN':'Allegro', 'Комиссия %':'Ком. %', 'Комиссия PLN':'Ком. zł', 'Прибыль PLN':'Прибыль', 'Маржа %':'Маржа %'}
 
 
 def available_width():
     component = components.declare_component('allegro_table_width', path=str(Path(__file__).parent / 'table_width'))
-    return component(key='main_table_width', default=850)
+    sizes = widths(st.session_state.get('main_table_width', 850) or 850)
+    labels = {LABELS.get(c, 'Фото' if c == 'Фото Komertia' else c): w for c, w in sizes.items()}
+    return component(key='main_table_width', default=850, column_widths=labels, row_height=38)
 
 
 def widths(available):

@@ -71,3 +71,35 @@ def test_batch_missing_bad_photo_and_order_total_are_handled():
     result=enhance_all_photos(frame)
     assert result['saved']==1 and result['missing']==1 and result['total']==2
     assert len(result['errors'])==1
+
+
+def test_improved_table_copy_cannot_replace_original_when_price_is_edited():
+    import pandas as pd,base64
+    from photo_enhancement import best_available_original,restore_original_photos
+    from komertia_details import PHOTO
+    original='data:image/png;base64,'+base64.b64encode(image_bytes()).decode()
+    frame=pd.DataFrame([{'_position_id':'saved-id',PHOTO:original,'Цена Allegro PLN':10}])
+    displayed=frame.copy()
+    large='data:image/png;base64,'+base64.b64encode(image_bytes(size=(40,20))).decode()
+    displayed['Фото оригинал']=large
+    displayed[PHOTO]=displayed.apply(best_available_original,axis=1)
+    assert displayed.iloc[0][PHOTO] != original
+    data=base64.b64decode(displayed.iloc[0][PHOTO].split(',',1)[1])
+    assert Image.open(BytesIO(data)).size==(40,20)
+    displayed.loc[0,'Цена Allegro PLN']=20
+    restored=restore_original_photos(displayed,frame)
+    assert restored.iloc[0][PHOTO]==original
+    assert restored.iloc[0]['Цена Allegro PLN']==20
+    assert frame.iloc[0]['Цена Allegro PLN']==10
+
+
+def test_table_uses_largest_original_and_does_not_call_upscale():
+    import base64
+    from photo_enhancement import best_available_original,original_resolution
+    from komertia_details import PHOTO
+    small='data:image/png;base64,'+base64.b64encode(image_bytes(size=(40,20))).decode()
+    large='data:image/png;base64,'+base64.b64encode(image_bytes(size=(800,400))).decode()
+    row={PHOTO:small,'Фото Komertia (оригинал)':large}
+    assert best_available_original(row)==large
+    assert best_available_original({PHOTO:small})==small
+    assert original_resolution(small)==(40,20)

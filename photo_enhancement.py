@@ -159,3 +159,42 @@ def render_enhancement(frame):
                 st.caption('Фото непрозрачное: исходный фон сохранён, чтобы не затронуть товар.')
             st.download_button('Скачать улучшенное фото для Allegro', result['data'], 'allegro-photo-improved.png', 'image/png', key='download_enhanced_photo')
             st.download_button('Скачать неизменённый оригинал', source, 'komertia-original.' + ('jpg' if source[:2] == b'\xff\xd8' else 'webp' if source[:4] == b'RIFF' else 'png'), key='download_original_photo')
+
+
+def restore_original_photos(edited, original_frame):
+    originals = dict(zip(original_frame['_position_id'], original_frame[PHOTO]))
+    restored = edited.copy()
+    for index, row in restored.iterrows():
+        position = row.get('_position_id')
+        restored.loc[index, PHOTO] = originals.get(position, '')
+    return restored
+
+
+def best_available_original(row):
+    """Prefer explicitly stored originals, never inferred URLs or enhanced copies."""
+    fields = ('Фото Komertia (оригинал)', 'Фото оригинал', 'Original photo', PHOTO)
+    candidates = []
+    for field in fields:
+        source = value(row.get(field))
+        if not source:
+            continue
+        try:
+            data = stored_photo_bytes(source)
+            with Image.open(BytesIO(data)) as image:
+                candidates.append((image.width * image.height, source))
+        except ValueError:
+            if field != PHOTO and source.startswith(('https://', 'http://')):
+                return source
+        except Exception:
+            continue
+    if candidates:
+        return max(candidates, key=lambda item: item[0])[1]
+    return value(row.get(PHOTO))
+
+
+def original_resolution(photo):
+    try:
+        with Image.open(BytesIO(stored_photo_bytes(photo))) as image:
+            return image.size
+    except Exception:
+        return None
