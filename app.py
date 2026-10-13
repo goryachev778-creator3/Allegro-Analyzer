@@ -422,5 +422,6 @@ with settings_tab:
                 except ValueError as exc:
                     st.error(str(exc))
     st.download_button("Скачать резервную копию Excel", backup_excel(edited), "allegro-backup.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", help="Рабочие поля и постоянные идентификаторы. Позволяет восстановить цены и комиссии после пересборки.")
-    from photo_enhancement import render_enhancement
-    render_enhancement(ensure_ids(edited))
+    import photo_enhancement
+    importlib.reload(photo_enhancement)
+    photo_enhancement.render_enhancement(ensure_ids(edited))

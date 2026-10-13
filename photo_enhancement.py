@@ -61,12 +61,73 @@ def stored_photo_bytes(photo):
         raise ValueError('Сохранённое фото не удалось прочитать.') from None
 
 
+def enhance_all_photos(frame, progress=None):
+    import json
+    import zipfile
+    rows = [row for _, row in frame.iterrows() if not is_order_total(row)]
+    pending = [row for row in rows if value(row.get(PHOTO)).strip()]
+    missing = len(rows) - len(pending)
+    output = BytesIO()
+    report = []
+    success = 0
+    total_bytes = 0
+    with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        for completed, row in enumerate(pending, start=1):
+            item = {'position_id': value(row.get('_position_id')), 'Produkt': value(row.get('Produkt')), 'Wariant': value(row.get('Wariant'))}
+            try:
+                source = stored_photo_bytes(row.get(PHOTO))
+                improved, dimensions, _ = enhance_photo(source, scale=2, denoise=True, sharpen=True, white_background=False)
+                if total_bytes + len(improved) > 128 * 1024 * 1024:
+                    raise ValueError('Общий размер копий превышает 128 МБ. Используйте обработку одного фото для оставшихся товаров.')
+                suffix = hashlib.sha256((item['position_id'] + str(completed)).encode()).hexdigest()[:12]
+                filename = f'allegro-photo-{suffix}.png'
+                archive.writestr(filename, improved)
+                total_bytes += len(improved)
+                success += 1
+                item.update({'file':filename, 'dimensions':list(dimensions), 'status':'ok'})
+            except ValueError as exc:
+                item.update({'status':'error','error':str(exc)})
+            report.append(item)
+            if progress:
+                progress(completed, len(pending))
+        archive.writestr('photos-report.json', json.dumps({'saved':success,'without_photo':missing,'photos':report}, ensure_ascii=False, indent=2))
+    return {'zip':output.getvalue(), 'saved':success, 'missing':missing, 'total':len(pending), 'errors':[item for item in report if item['status']=='error']}
+
+
+def render_batch_enhancement(rows):
+    eligible = rows.loc[~rows.apply(is_order_total, axis=1)]
+    missing = int(eligible[PHOTO].map(lambda photo: not value(photo).strip()).sum()) if PHOTO in eligible else len(eligible)
+    st.caption(f'Без фотографии: {missing}. Массовая обработка: 2×, мягкое уменьшение шума и повышение резкости. Оригиналы не заменяются.')
+    token = hashlib.sha256(str([(value(row.get('_position_id')), value(row.get(PHOTO))) for _, row in eligible.iterrows()]).encode()).hexdigest()
+    if st.button('Улучшить все фотографии', disabled=missing == len(eligible), key='enhance_all_photos'):
+        total = len(eligible) - missing
+        bar = st.progress(0, text=f'Обработано 0 из {total}')
+        def update(done, count):
+            bar.progress(done/count, text=f'Обработано {done} из {count}')
+        result = enhance_all_photos(eligible, update)
+        result['token'] = token
+        st.session_state['enhanced_photo_batch'] = result
+    result = st.session_state.get('enhanced_photo_batch')
+    if result and result['token'] == token:
+        st.success(f"Улучшено фото: {result['saved']} · без фотографии: {result['missing']} · ошибок: {len(result['errors'])}")
+        if result['errors']:
+            with st.expander('Необработанные фотографии'):
+                for item in result['errors']:
+                    st.write(' · '.join([item['Produkt'], item['Wariant']]))
+                    st.caption(item['error'])
+        if result['saved']:
+            st.download_button('Скачать ZIP со всеми улучшенными фото', result['zip'], 'allegro-photos-improved.zip', 'application/zip', key='download_enhanced_zip')
+
+
 def render_enhancement(frame):
     with st.expander('Улучшить фото для Allegro'):
         rows = frame.loc[~frame.apply(is_order_total, axis=1)]
         if rows.empty:
             st.info('Нет товаров для выбора фотографии.')
             return
+        render_batch_enhancement(rows)
+        st.divider()
+        st.caption('Обработка одного фото')
         ids = rows['_position_id'].tolist()
         labels = {row['_position_id']: original_label(row) for _, row in rows.iterrows()}
         position = st.selectbox('Фото товара для улучшения', ids, format_func=lambda item: labels[item], key='enhancement_product')

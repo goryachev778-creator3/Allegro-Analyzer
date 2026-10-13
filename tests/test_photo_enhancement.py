@@ -38,3 +38,36 @@ def test_white_background_only_transparency_and_no_cropping():
 def test_invalid_or_excessive_output_rejected():
     with pytest.raises(ValueError): enhance_photo(b'invalid')
     with pytest.raises(ValueError): enhance_photo(image_bytes(size=(1100,1100)),4)
+
+
+def test_batch_26_images_zip_progress_and_originals_unchanged():
+    import pandas as pd
+    import base64,zipfile,json
+    from photo_enhancement import enhance_all_photos
+    from komertia_details import PHOTO
+    source=image_bytes()
+    photo='data:image/png;base64,' + base64.b64encode(source).decode()
+    frame=pd.DataFrame([{'_position_id':f'item-{i}','Produkt':'Produkt','Wariant':str(i),PHOTO:photo,'Закупка PLN':12.5} for i in range(26)])
+    before=frame.copy(deep=True)
+    progress=[]
+    result=enhance_all_photos(frame,lambda x,y:progress.append((x,y)))
+    assert result['saved']==26 and result['missing']==0 and not result['errors']
+    assert progress==[(i,26) for i in range(1,27)]
+    pd.testing.assert_frame_equal(frame,before)
+    with zipfile.ZipFile(BytesIO(result['zip'])) as archive:
+        names=[n for n in archive.namelist() if n.endswith('.png')]
+        assert len(names)==len(set(names))==26
+        assert all(Image.open(BytesIO(archive.read(n))).size==(40,20) for n in names)
+        report=json.loads(archive.read('photos-report.json'))
+        assert report['saved']==26
+
+
+def test_batch_missing_bad_photo_and_order_total_are_handled():
+    import pandas as pd,base64
+    from photo_enhancement import enhance_all_photos
+    from komertia_details import PHOTO
+    photo='data:image/png;base64,'+base64.b64encode(image_bytes()).decode()
+    frame=pd.DataFrame([{'_position_id':'good','Produkt':'Produkt',PHOTO:photo},{'_position_id':'none',PHOTO:''},{'_position_id':'bad',PHOTO:'data:image/png;base64,invalid'},{'_position_id':'total','Produkt':'ИТОГО A1632',PHOTO:photo}])
+    result=enhance_all_photos(frame)
+    assert result['saved']==1 and result['missing']==1 and result['total']==2
+    assert len(result['errors'])==1
