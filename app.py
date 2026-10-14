@@ -29,6 +29,7 @@ import pandas as pd
 import streamlit as st
 from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
 from analyzer import INPUTS, NUMERIC, COLORS, calculate, export_excel, number, read_upload
+from profitability_style import profitability_style
 
 st.set_page_config(page_title="Allegro Analyzer", page_icon="📊", layout="wide")
 st.title("Allegro Analyzer")
@@ -386,7 +387,7 @@ with main_tab:
     if filtered:
         import hashlib
         editor_key += "_" + hashlib.sha256(str((search, statuses)).encode()).hexdigest()[:12]
-    visible_edits = st.data_editor(editor_frame, column_order=column_order, column_config=config,
+    visible_edits = st.data_editor(profitability_style(editor_frame), column_order=column_order, column_config=config,
         disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
         num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
     changed = visible_edits.drop(columns=["№", "Прибыль PLN", "Маржа %", "Статус"], errors="ignore")
