@@ -41,7 +41,7 @@ def read_upload(data, filename, sheet=0):
     return pd.read_csv(StringIO(content), sep=delimiter, dtype=str, keep_default_na=False)
 
 
-def calculate(frame, weak_margin=15):
+def calculate(frame, weak_margin=15, landed_purchase=False):
     result = frame.copy()
     for col in NUMERIC:
         result[col] = result[col].map(number)
@@ -50,6 +50,11 @@ def calculate(frame, weak_margin=15):
     result["Пошлина PLN"] = (result["Закупка PLN"] + result["Доставка PLN"]) * result["Пошлина %"] / 100
     result["Себестоимость PLN"] = result[["Закупка PLN", "Доставка PLN", "Пошлина PLN", "Оформление PLN", "Доп. расходы PLN", "Невозмещаемый НДС PLN"]].sum(axis=1)
     result["Комиссия всего PLN"] = result["Цена Allegro PLN"] * result["Комиссия %"] / 100 + result["Комиссия PLN"]
+    if landed_purchase:
+        # Purchase is already landed; retain legacy inputs without charging them again.
+        result["Пошлина PLN"] = 0.0
+        result["Себестоимость PLN"] = result["Закупка PLN"] + result["Доп. расходы PLN"]
+        result["Комиссия всего PLN"] = result["Цена Allegro PLN"] * result["Комиссия %"] / 100
     result["Прибыль PLN"] = result["Цена Allegro PLN"] - result["Себестоимость PLN"] - result["Комиссия всего PLN"]
     result["Маржа %"] = result["Прибыль PLN"].div(result["Цена Allegro PLN"].replace(0, float("nan"))) * 100
     result["ROI %"] = result["Прибыль PLN"].div(result["Себестоимость PLN"].replace(0, float("nan"))) * 100
@@ -61,14 +66,14 @@ def calculate(frame, weak_margin=15):
         if row["Прибыль PLN"] == 0 or row["Маржа %"] < weak_margin:
             return "Слабая прибыль"
         return "Выгодный"
-    result["Статус"] = result.apply(status, axis=1)
+    result["Статус"] = result.apply(status, axis=1) if len(result) else pd.Series(index=result.index, dtype=str)
     return result.sort_values("Прибыль PLN", ascending=False, kind="stable").reset_index(drop=True)
 
 
 COLORS = {"Выгодный": "DCFCE7", "Слабая прибыль": "FEF3C7", "Убыточный": "FEE2E2", "Без цены": "E2E8F0"}
 
 
-def export_excel(result, weak_margin=15):
+def export_excel(result, weak_margin=15, landed_purchase=False):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         from komertia_details import excel_details
@@ -99,6 +104,15 @@ def export_excel(result, weak_margin=15):
             "Нулевой знаменатель: показатель не определён. Возмещаемый НДС не включайте в расходы.",
             "Сравнивайте закупку и продажу на одинаковой базе НДС. Это модель прибыльности, не налоговая декларация."
         ]})
+        if landed_purchase:
+            notes = pd.DataFrame({"Правила": [
+                "Закупка уже включает транспорт и таможню; повторно они не начисляются.",
+                "Комиссия = цена Allegro × комиссия % / 100.",
+                "Прибыль = цена Allegro − закупка − комиссия − дополнительные расходы.",
+                "Маржа % = прибыль / цена Allegro × 100.",
+                "Итог: сумма прибыли по одной штуке каждого активного товара; средняя маржа — арифметическая."]})
+            from product_archive import totals
+            totals(result).to_excel(writer, sheet_name="Итоги", index=False)
         notes.to_excel(writer, sheet_name="Методика", index=False)
         writer.sheets["Методика"].column_dimensions["A"].width = 120
     return output.getvalue()

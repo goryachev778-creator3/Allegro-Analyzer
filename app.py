@@ -5,6 +5,8 @@ importlib.reload(compact_table)
 from compact_table import available_width, widths, LABELS
 import komertia_details
 import storage
+import product_archive
+importlib.reload(product_archive)
 import product_duplicates
 importlib.reload(product_duplicates)
 import photo_enhancement
@@ -45,6 +47,12 @@ try:
         if restored is not None and not migrated.equals(restored):
             save_analysis(migrated)
         restored = migrated
+        if restored is not None and not restored.empty:
+            archived, archive_notice = product_archive.prepare(restored)
+            if not archived.equals(restored):
+                save_analysis(archived)
+                restored = archived
+            st.session_state["archive_notice"] = archive_notice
         if restored is not None:
             st.session_state["products"] = restored
     show_saved()
@@ -89,7 +97,15 @@ with settings_tab:
     with st.expander("Методика расчёта"):
         st.markdown("""**Пошлина** = (закупка + доставка) × ставка пошлины.
 
-    **Себестоимость** = закупка + доставка + пошлина + оформление + дополнительные расходы + невозмещаемый НДС.
+    **Для рабочего анализа из 25 записей:** закупка уже включает транспорт и таможню.
+
+    **Комиссия** = цена Allegro × комиссия % / 100.
+
+    **Прибыль** = цена Allegro − закупка − комиссия − дополнительные расходы.
+
+    **Маржа %** = прибыль / цена Allegro × 100.
+
+    **Для старых примеров и других наборов:** себестоимость = закупка + доставка + пошлина + оформление + дополнительные расходы + невозмещаемый НДС.
 
     **Прибыль** = цена Allegro − себестоимость − процентная и фиксированная комиссии.
 
@@ -320,7 +336,7 @@ with main_tab:
     search = left.text_input("Поиск по названию или SKU")
     statuses = right.multiselect("Статус", list(COLORS), default=list(COLORS))
     try:
-        calculated = calculate(working, weak).set_index("_position_id").reindex(working["_position_id"])
+        calculated = calculate(working, weak, landed_purchase=product_archive.enabled(working)).set_index("_position_id").reindex(working["_position_id"])
         calculated.index = working.index
         calculated = calculated.reset_index(drop=True)
     except (ValueError, TypeError) as exc:
@@ -329,7 +345,7 @@ with main_tab:
         calculated["Статус"] = "Без цены"
         calculated["Прибыль PLN"] = float("nan")
         calculated["Маржа %"] = float("nan")
-    product_rows = ~working.apply(is_order_total, axis=1)
+    product_rows = product_archive.active_mask(working)
     mask = calculated["Статус"].isin(statuses) & product_rows
     if search:
         matches = pd.Series(False, index=working.index)
@@ -340,6 +356,8 @@ with main_tab:
     editor_frame = working.copy()
     for column in ("Прибыль PLN", "Маржа %", "Статус"):
         editor_frame[column] = calculated[column].to_numpy()
+    if product_archive.enabled(working):
+        editor_frame["Комиссия PLN"] = calculated["Комиссия всего PLN"].to_numpy()
     editor_frame.insert(0, "№", range(1, len(editor_frame) + 1))
     editor_frame = editor_frame.loc[mask].reset_index(drop=True)
     editor_frame[PHOTO] = editor_frame.apply(photo_enhancement.best_available_original, axis=1) if not editor_frame.empty else editor_frame[PHOTO]
@@ -369,10 +387,13 @@ with main_tab:
         import hashlib
         editor_key += "_" + hashlib.sha256(str((search, statuses)).encode()).hexdigest()[:12]
     visible_edits = st.data_editor(editor_frame, column_order=column_order, column_config=config,
-        disabled=["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
+        disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
         num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
     changed = visible_edits.drop(columns=["№", "Прибыль PLN", "Маржа %", "Статус"], errors="ignore")
     changed = photo_enhancement.restore_original_photos(changed, working)
+    if product_archive.enabled(working):
+        original_commissions = working.set_index("_position_id")["Комиссия PLN"]
+        changed["Комиссия PLN"] = changed["_position_id"].map(original_commissions)
     if filtered:
         edited = working.copy()
         for _, row in changed.iterrows():
@@ -398,16 +419,27 @@ with main_tab:
         st.info("Добавьте товар.")
     else:
         try:
-            result = calculate(edited.loc[~edited.apply(is_order_total, axis=1)], weak)
+            result = calculate(edited.loc[product_archive.active_mask(edited)], weak, landed_purchase=product_archive.enabled(edited))
             metric_slots[0].metric("Товаров", len(result))
             metric_slots[1].metric("Выгодных", int((result["Статус"] == "Выгодный").sum()))
             metric_slots[2].metric("Убыточных", int((result["Статус"] == "Убыточный").sum()))
             metric_slots[3].metric("Без цены", int((result["Статус"] == "Без цены").sum()))
-            st.download_button("Экспорт полного анализа в Excel", export_excel(result, weak), "allegro-analysis.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+            if product_archive.enabled(edited):
+                st.dataframe(product_archive.totals(result), hide_index=True)
+                if len(result) != 21:
+                    st.warning(f"С заполненной ценой Allegro осталось {len(result)} товаров вместо ожидаемых 21. Цены не изменены; остальные записи доступны в архиве.")
+            st.download_button("Экспорт полного анализа в Excel", export_excel(result, weak, landed_purchase=product_archive.enabled(edited)), "allegro-analysis.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
         except (ValueError, TypeError) as exc:
             st.error(f"Проверьте значения в таблице: {exc}")
 
 with settings_tab:
+    with st.expander("Архив товаров"):
+        if st.session_state.get("archive_notice"):
+            st.info(st.session_state["archive_notice"])
+        archived_rows = edited.loc[~product_archive.active_mask(edited) & ~edited.apply(is_order_total, axis=1)]
+        st.caption(f"В архиве: {len(archived_rows)}. Все {len(edited)} исходных записей сохраняются в базе.")
+        if not archived_rows.empty:
+            st.dataframe(archived_rows[[c for c in (PHOTO, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "_position_id") if c in archived_rows]], hide_index=True, column_config={PHOTO: st.column_config.ImageColumn("Фото")})
     st.subheader("Фото и исходные данные Komertia")
     st.caption("Оригинальные Produkt и Wariant сохранены без перевода.")
     from storage import ensure_ids
