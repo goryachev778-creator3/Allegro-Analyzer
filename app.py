@@ -5,6 +5,8 @@ importlib.reload(compact_table)
 from compact_table import available_width, widths, LABELS
 import komertia_details
 import storage
+import order_scope
+importlib.reload(order_scope)
 import product_archive
 importlib.reload(product_archive)
 import product_duplicates
@@ -214,7 +216,7 @@ with settings_tab:
                             frame[field] = parsed
                         else:
                             frame[field] = values.astype(str)
-                    for metadata in ("Produkt", "Wariant", "_position_id"):
+                    for metadata in ("Produkt", "Wariant", "_position_id", "source_order", "Ilość", "Komertia: status kosztów", "Komertia: uwagi"):
                         if metadata in raw:
                             frame[metadata] = raw[metadata]
                     if source_lp_column != options[0]:
@@ -331,6 +333,11 @@ with settings_tab:
                 st.rerun()
 with main_tab:
     st.subheader("Анализ прибыльности")
+    order_labels = order_scope.order_labels(working)
+    selected_order = "Все заказы"
+    if order_labels.nunique() > 1:
+        selected_order = st.selectbox("Заказ Komertia", ["Все заказы"] + list(dict.fromkeys(order_labels)))
+    order_mask = order_labels.eq(selected_order) if selected_order != "Все заказы" else pd.Series(True,index=working.index)
     metrics = st.columns(4)
     metric_slots = [column.empty() for column in metrics]
     left, right = st.columns(2)
@@ -347,7 +354,7 @@ with main_tab:
         calculated["Прибыль PLN"] = float("nan")
         calculated["Маржа %"] = float("nan")
     product_rows = product_archive.active_mask(working)
-    mask = calculated["Статус"].isin(statuses) & product_rows
+    mask = calculated["Статус"].isin(statuses) & product_rows & order_mask
     if search:
         matches = pd.Series(False, index=working.index)
         for column in ("Produkt", "SKU", FULL_NAME, "Wariant"):
@@ -386,7 +393,7 @@ with main_tab:
     editor_key = f"editor_{st.session_state.get('editor_revision', 0)}"
     if filtered:
         import hashlib
-        editor_key += "_" + hashlib.sha256(str((search, statuses)).encode()).hexdigest()[:12]
+        editor_key += "_" + hashlib.sha256(str((search, statuses, selected_order)).encode()).hexdigest()[:12]
     visible_edits = st.data_editor(profitability_style(editor_frame), column_order=column_order, column_config=config,
         disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
         num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
@@ -420,14 +427,16 @@ with main_tab:
         st.info("Добавьте товар.")
     else:
         try:
-            result = calculate(edited.loc[product_archive.active_mask(edited)], weak, landed_purchase=product_archive.enabled(edited))
+            result = calculate(edited.loc[product_archive.active_mask(edited) & order_mask], weak, landed_purchase=product_archive.enabled(edited))
             metric_slots[0].metric("Товаров", len(result))
             metric_slots[1].metric("Выгодных", int((result["Статус"] == "Выгодный").sum()))
             metric_slots[2].metric("Убыточных", int((result["Статус"] == "Убыточный").sum()))
             metric_slots[3].metric("Без цены", int((result["Статус"] == "Без цены").sum()))
             if product_archive.enabled(edited):
                 st.dataframe(product_archive.totals(result), hide_index=True)
-                if len(result) != 21:
+                if result["Цена Allegro PLN"].map(number).eq(0).any():
+                    st.caption("Итоги рассчитаны только для товаров с ценой Allegro. Для новых позиций укажите цену и комиссию категории; нули означают, что данные ещё не заданы.")
+                if order_labels.nunique() == 1 and len(result) != 21:
                     st.warning(f"С заполненной ценой Allegro осталось {len(result)} товаров вместо ожидаемых 21. Цены не изменены; остальные записи доступны в архиве.")
             st.download_button("Экспорт полного анализа в Excel", export_excel(result, weak, landed_purchase=product_archive.enabled(edited)), "allegro-analysis.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
         except (ValueError, TypeError) as exc:

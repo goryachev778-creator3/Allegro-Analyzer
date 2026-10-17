@@ -50,6 +50,10 @@ def original_record(row):
         source = next((row[c] for c in aliases if value(row[c]).strip()), '')
         if value(source).strip():
             result[target] = value(source)
+    if value(row.get('source_order')).strip() not in ('', 'A1632'):
+        for column in ('Produkt', 'Wariant'):
+            result.setdefault(column, '')
+        return result
     catalog = json.loads((Path(__file__).parent / 'assets' / 'komertia-screenshots.json').read_text())['rows']
     position = value(row.get('_position_id'))
     lp = value(row.get('source_row')).strip()

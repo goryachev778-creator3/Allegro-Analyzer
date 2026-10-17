@@ -74,6 +74,8 @@ def source_lp(row):
                 sources.add(_source_key(key[1]))
         except (ValueError, TypeError, IndexError):
             pass
+    if value(row.get('source_order')).strip() not in ('', 'A1632'):
+        raise ValueError('В новом заказе не указан исходный LP; старый каталог не используется.')
     candidates = [r for r in catalog if _source_key(r['Produkt']) in sources]
     variant = _source_key(row.get('Wariant'))
     if variant and candidates:
@@ -102,6 +104,9 @@ def recover_source_lps(records, strict=False):
 
 
 def apply_lp_photos(records, photos):
+    orders = {value(r.get('source_order')).strip() or 'A1632' for r in records}
+    if len(orders) > 1:
+        raise ValueError('Выберите один заказ для фотографий: одинаковый LP не идентифицирует товар между заказами.')
     result = []
     matched = []
     for row in records:
@@ -168,12 +173,18 @@ def save_manual_zip_photos(data, selections, expected_ids):
         db.close()
 
 
-def auto_photo_preview(frame, photos):
+def auto_photo_preview(frame, photos, scope_order=None):
     """Resolve active saved products; never guess from their display position."""
     from storage import ensure_ids
     from analyzer import number
     from komertia_details import NAME_PL, original_label, is_order_total
     current = ensure_ids(frame.reset_index(drop=True))
+    from order_scope import order_labels
+    if scope_order is None and order_labels(current).nunique() > 1:
+        raise ValueError('Выберите заказ фотографий: LP разных заказов не смешиваются.')
+    if scope_order is not None:
+        from order_scope import order_labels
+        current = current.loc[order_labels(current).eq(scope_order)].reset_index(drop=True)
     matches, unresolved, excluded, totals, protected = [], [], [], [], []
     for _, row in current.iterrows():
         position = row['_position_id']
@@ -202,7 +213,7 @@ def auto_photo_preview(frame, photos):
             protected.append({'position_id': position, 'name': name})
             continue
         matches.append({'position_id': position, 'name': name, 'product': value(row.get('Produkt')), 'variant': value(row.get('Wariant')), 'lp': lp, 'photo': photos[lp]})
-    return {'matches': matches, 'unresolved': unresolved, 'excluded': excluded, 'totals': totals, 'protected': protected, 'ids': current['_position_id'].tolist()}
+    return {'matches': matches, 'unresolved': unresolved, 'excluded': excluded, 'totals': totals, 'protected': protected, 'ids': current['_position_id'].tolist(), 'scope_order': scope_order}
 
 
 def save_confirmed_auto_photos(data, preview):
@@ -218,7 +229,7 @@ def save_confirmed_auto_photos(data, preview):
             records = read_from(db, 'analysis')
             if not records:
                 raise ValueError('В базе нет текущих товаров.')
-            current = auto_photo_preview(pd.DataFrame(records), photos)
+            current = auto_photo_preview(pd.DataFrame(records), photos, scope_order=preview.get('scope_order'))
             if not current['matches']:
                 raise ValueError('Нет подтверждённых совпадений для сохранения.')
             identity = lambda plan: [(r['position_id'], r['name'], r['lp']) for r in plan['matches']]
@@ -226,7 +237,8 @@ def save_confirmed_auto_photos(data, preview):
                 raise ValueError('Данные сопоставления изменились. Сформируйте предварительный результат заново.')
             assigned = {r['position_id']: r['photo'] for r in current['matches']}
             updated = []
-            for position, row in zip(current['ids'], records):
+            for row in records:
+                position = row.get('_position_id')
                 record = dict(row)
                 if position in assigned:
                     record[PHOTO] = assigned[position]

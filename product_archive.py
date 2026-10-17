@@ -33,10 +33,13 @@ def active_mask(frame):
     if not enabled(frame):
         return products
     archived = frame[FLAG].eq(True) if FLAG in frame else pd.Series(False, index=frame.index)
-    return products & ~archived & frame['Цена Allegro PLN'].map(number).gt(0)
+    from order_scope import order_labels
+    new_order = order_labels(frame).ne('A1632')
+    return products & ~archived & (frame['Цена Allegro PLN'].map(number).gt(0) | new_order)
 
 
 def totals(result):
+    result = result.loc[result['Цена Allegro PLN'].map(number).gt(0)]
     return pd.DataFrame([{'Produkt': 'ИТОГО — по 1 шт. каждого активного товара',
         'Товаров': len(result), 'Прибыль PLN': result['Прибыль PLN'].sum(),
         'Маржа %': result['Маржа %'].mean()}])

@@ -11,8 +11,12 @@ from storage import ensure_ids, is_external
 def render_manual_mapping(payload, frame):
     photos = read_photo_zip(payload)
     revision = hashlib.sha256(payload).hexdigest()[:16]
+    from order_scope import order_labels
+    labels = order_labels(frame)
+    scope_order = st.selectbox('Заказ, которому принадлежат фотографии ZIP', list(dict.fromkeys(labels)))
+    revision += '_' + scope_order
     if st.button('Автоматически сопоставить все фото', key='auto_match_all_photos'):
-        st.session_state['auto_photo_preview'] = {'zip_revision': revision, 'plan': auto_photo_preview(frame, photos)}
+        st.session_state['auto_photo_preview'] = {'zip_revision': revision, 'plan': auto_photo_preview(frame, photos, scope_order=scope_order)}
     saved_preview = st.session_state.get('auto_photo_preview')
     if saved_preview and saved_preview['zip_revision'] == revision:
         plan = saved_preview['plan']
@@ -49,7 +53,7 @@ def render_manual_mapping(payload, frame):
                 st.image(base64.b64decode(photos[lp].split(',', 1)[1]), caption=f'LP {lp:02}', width=120)
     current = enrich_details(ensure_ids(frame.reset_index(drop=True)))
     expected_ids = current['_position_id'].tolist()
-    current = current.loc[~current.apply(is_order_total, axis=1)].reset_index(drop=True)
+    current = current.loc[~current.apply(is_order_total, axis=1) & order_labels(current).eq(scope_order)].reset_index(drop=True)
     selections = {}
     for index, row in current.iterrows():
         name, choice, preview = st.columns([3, 2, 1])
