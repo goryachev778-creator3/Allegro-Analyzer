@@ -77,8 +77,8 @@ def replace_analysis(frame):
 
 with st.sidebar:
     st.header("Параметры анализа")
-    weak = st.number_input("Порог выгодной маржи, %", 0.0, 100.0, 15.0, 1.0)
-    st.markdown("🟢 Выгодный · 🟡 Слабая прибыль · 🔴 Убыточный · ⚪ Без цены")
+    weak = st.number_input("Порог выгодной маржи, %", 0.0, 100.0, 50.0, 1.0)
+    st.markdown(f"🟢 Маржа ≥ {weak:g}% и прибыль > 0  \n🟡 Прибыль ≥ 0 и маржа < {weak:g}%; также нулевая прибыль  \n🔴 Прибыль < 0  \n⚪ Цена не задана")
 
 
 main_tab, settings_tab = st.tabs(["Главная", "Настройки и импорт"])

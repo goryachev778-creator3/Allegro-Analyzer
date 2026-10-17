@@ -9,7 +9,7 @@ def test_demo_workflow_and_margin_setting():
     assert not app.exception
     next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
     assert not app.exception
-    assert [m.value for m in app.metric] == ['3', '1', '1', '0']
+    assert [m.value for m in app.metric] == ['3', '0', '1', '0']
     assert len(app.dataframe) == 1
     app.sidebar.number_input[0].set_value(40.0).run()
     assert not app.exception
