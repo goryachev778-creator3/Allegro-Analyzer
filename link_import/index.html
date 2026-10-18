@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><script>
+const send=(type,rest={})=>parent.postMessage({isStreamlitMessage:true,type,...rest},'*');
+let sent='';
+window.addEventListener('message',event=>{
+ if(event.source!==parent||event.data.type!=='streamlit:render')return;
+ send('streamlit:setFrameHeight',{height:0});
+ if(event.data.args?.clear){
+  try{if(parent.location.hash.startsWith('#allegro-import='))parent.history.replaceState(null,'',parent.location.pathname+parent.location.search);}catch{}
+  return;
+ }
+ try{
+  const fragment=parent.location.hash;
+  if(!fragment.startsWith('#allegro-import='))return;
+  const token=fragment.slice('#allegro-import='.length);
+  if(token&&token.length<=32000&&token!==sent){sent=token;send('streamlit:setComponentValue',{value:token,dataType:'json'});}
+ }catch{}
+});
+send('streamlit:componentReady',{apiVersion:1});
+</script></body></html>

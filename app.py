@@ -83,6 +83,10 @@ with st.sidebar:
     st.markdown(f"🟢 Маржа ≥ {weak:g}% и прибыль > 0  \n🟡 Прибыль ≥ 0 и маржа < {weak:g}%; также нулевая прибыль  \n🔴 Прибыль < 0  \n⚪ Цена не задана")
 
 
+import private_link_import
+importlib.reload(private_link_import)
+private_link_import.render()
+
 main_tab, settings_tab = st.tabs(["Главная", "Настройки и импорт"])
 
 with settings_tab:
