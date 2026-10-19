@@ -140,3 +140,17 @@ def test_order_total_is_hidden_but_not_deleted_from_storage():
     assert app.metric[0].value == '26'
     assert 'ИТОГО A1632' not in app.dataframe[0].value['Produkt'].tolist()
     pd.testing.assert_frame_equal(load_analysis(), before)
+
+
+def test_stale_streamlit_session_does_not_erase_external_import():
+    import storage
+    app = AppTest.from_file(APP).run()
+    next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
+    before = storage.read('analysis')
+    imported = dict(before[0], _position_id='concurrently-imported', source_order='2026-10-19')
+    storage.write('analysis', before + [imported])
+    app.run()
+    assert not app.exception
+    assert len(storage.read('analysis')) == 4
+    assert storage.read('analysis')[-1]['_position_id'] == 'concurrently-imported'
+    assert any('Автосохранение остановлено' in e.value for e in app.error)
