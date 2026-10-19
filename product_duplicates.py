@@ -133,6 +133,7 @@ def confirm_duplicates(expected):
                 prices[row['_position_id']] = {c: row.get(c, 0) for c in storage.SALES}
             storage.write_to(db, 'prices', prices)
             storage.write_to(db, 'analysis', records(result))
+        result.attrs['analysis_hash'] = storage.analysis_hash(records(result))
         return result, count
     finally:
         db.close()

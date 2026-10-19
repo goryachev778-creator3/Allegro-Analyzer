@@ -75,7 +75,7 @@ def test_display_order_numbers_and_saved_values():
     assert list(displayed['Produkt']) == ['', '', '']
     import json
     order = list(app.dataframe[0].proto.column_order)
-    assert order[:7] == ['№', 'Фото Komertia', 'Produkt', 'Wariant', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
+    assert order[:8] == ['№', 'Фото Komertia', 'Produkt', 'Wariant', 'Партия', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
     assert not {'Nazwa produktu', 'Товар', 'Полное название Komertia'} & set(order)
     app.session_state['editor_1'] = {'edited_rows': {0: {'Цена Allegro PLN': 150.0, 'Комиссия %': 9.0}}, 'added_rows': [], 'deleted_rows': []}
     app.run()
@@ -99,7 +99,7 @@ def test_single_main_table_filters_preserve_hidden_rows_and_prices():
     save_analysis(rows)
     app = AppTest.from_file(APP).run()
     assert not app.exception
-    assert [t.label for t in app.tabs] == ['Главная', 'Настройки и импорт']
+    assert [t.label for t in app.tabs] == ['Главная', 'Настройки и импорт', 'Импорт Komertia']
     assert len(app.dataframe) == 1
     order = list(app.dataframe[0].proto.column_order)
     assert 'Прибыль PLN' in order and 'Маржа %' in order
@@ -140,3 +140,17 @@ def test_order_total_is_hidden_but_not_deleted_from_storage():
     assert app.metric[0].value == '26'
     assert 'ИТОГО A1632' not in app.dataframe[0].value['Produkt'].tolist()
     pd.testing.assert_frame_equal(load_analysis(), before)
+
+
+def test_stale_streamlit_session_does_not_erase_external_import():
+    import storage
+    app = AppTest.from_file(APP).run()
+    next(b for b in app.button if b.label == 'Открыть демонстрационный пример').click().run()
+    before = storage.read('analysis')
+    imported = dict(before[0], _position_id='concurrently-imported', source_order='2026-10-19')
+    storage.write('analysis', before + [imported])
+    app.run()
+    assert not app.exception
+    assert len(storage.read('analysis')) == 4
+    assert storage.read('analysis')[-1]['_position_id'] == 'concurrently-imported'
+    assert any('Автосохранение остановлено' in e.value for e in app.error)

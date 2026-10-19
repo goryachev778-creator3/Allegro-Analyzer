@@ -76,7 +76,9 @@ def save_quote(frame):
                 prices.setdefault(row['_position_id'],{c:row[c] for c in storage.SALES})
             storage.write_to(db,'analysis',updated)
             storage.write_to(db,'prices',prices)
-        return pd.DataFrame(updated),len(added),skipped
+        frame = pd.DataFrame(updated)
+        frame.attrs['analysis_hash'] = storage.analysis_hash(updated)
+        return frame,len(added),skipped
     finally:
         db.close()
 
@@ -99,6 +101,7 @@ def render():
         if st.button('Добавить товары в Neon',key='confirm_private_import',type='primary'):
             updated,added,skipped=save_quote(frame)
             st.session_state['products']=updated
+            st.session_state['analysis_expected_hash']=updated.attrs.get('analysis_hash')
             st.session_state['editor_revision']=st.session_state.get('editor_revision',0)+1
             destination='Neon PostgreSQL' if __import__('storage').is_external() else 'локальную базу (Neon не подключён)'
             st.session_state['private_import_success']=f'Добавлено: {added}. Пропущено повторов: {skipped}. Сохранено в {destination}. Прежние товары сохранены.'

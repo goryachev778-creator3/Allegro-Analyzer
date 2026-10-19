@@ -38,6 +38,7 @@ def render_manual_mapping(payload, frame):
                     raise ValueError('Подключение Neon не настроено. Фотографии не сохранены локально.')
                 records = save_confirmed_auto_photos(payload, plan)
                 st.session_state['products'] = pd.DataFrame(records)
+                st.session_state['analysis_expected_hash'] = __import__('storage').analysis_hash(records)
                 st.session_state['editor_revision'] = st.session_state.get('editor_revision', 0) + 1
                 st.session_state['lp_photo_success'] = f"Сохранено подтверждённых фото в Neon: {len(plan['matches'])}. Названия, цены и порядок товаров сохранены."
                 st.session_state.pop('auto_photo_preview', None)
@@ -69,6 +70,7 @@ def render_manual_mapping(payload, frame):
                 raise ValueError('Подключение Neon не настроено. Фотографии не сохранены локально.')
             records = save_manual_zip_photos(payload, selections, expected_ids)
             st.session_state['products'] = pd.DataFrame(records)
+            st.session_state['analysis_expected_hash'] = __import__('storage').analysis_hash(records)
             st.session_state['editor_revision'] = st.session_state.get('editor_revision', 0) + 1
             st.session_state['lp_photo_success'] = f'Сохранено выбранных фото в Neon: {len(selections)}. Остальные данные товаров не изменены.'
             st.rerun()
