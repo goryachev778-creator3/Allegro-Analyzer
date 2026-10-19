@@ -36,7 +36,7 @@ def is_external():
     return bool(external_url())
 
 
-def state_connection():
+def state_connection(ensure_table=True):
     if not external_url():
         return connect()
     try:
@@ -47,7 +47,8 @@ def state_connection():
             raise ValueError('TLS required')
         settings.setdefault('sslmode', 'require')
         db = psycopg.connect(**settings, connect_timeout=10)
-        db.execute('CREATE TABLE IF NOT EXISTS allegro_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        if ensure_table:
+            db.execute('CREATE TABLE IF NOT EXISTS public.allegro_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         return db
     except Exception:
         raise RuntimeError('Внешняя база недоступна. Автосохранение не выполнено. Проверьте ALLEGRO_DATABASE_URL в Secrets.') from None
@@ -57,7 +58,7 @@ def read_from(db, key):
     table = 'allegro_state' if is_external() else 'state'
     placeholder = '%s' if is_external() else '?'
     row = db.execute(f'SELECT value FROM {table} WHERE key = {placeholder}', (key,)).fetchone()
-    return json.loads(row[0]) if row else None
+    return (json.loads(row[0]) if isinstance(row[0], str) else row[0]) if row else None
 
 
 def write_to(db, key, value):
@@ -88,17 +89,27 @@ def write(key, value):
 SALES = ['Цена Allegro PLN', 'Комиссия %', 'Комиссия PLN']
 
 
-def save_analysis(frame):
+def analysis_hash(records):
+    return hashlib.sha256(json.dumps(records, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+
+def save_analysis(frame, expected_hash=None):
     frame = ensure_ids(frame.reset_index(drop=True))
     records = frame.astype(object).where(pd.notna(frame), None).to_dict('records')
     db = state_connection()
     try:
         with db:
+            if is_external():
+                db.execute('SELECT pg_advisory_xact_lock(%s)', (190102026,))
+            current = read_from(db, 'analysis')
+            if expected_hash is not None and analysis_hash(current or []) != expected_hash:
+                raise ValueError('Данные изменились в другой сессии или после импорта. Автосохранение остановлено: скачайте резервную копию и обновите страницу.')
             prices = {canonical_id(k): v for k, v in (read_from(db, 'prices') or {}).items()}
             for row in records:
                 prices[row['_position_id']] = {c: row[c] for c in SALES}
             write_to(db, 'prices', prices)
             write_to(db, 'analysis', records)
+        return analysis_hash(records)
     finally:
         db.close()
 
@@ -134,7 +145,11 @@ def load_analysis():
         if entry:
             records = json.loads(entry[0])
             save_analysis(pd.DataFrame(records) if records else pd.DataFrame(columns=INPUTS))
-    return None if records is None else ensure_ids(pd.DataFrame(records)) if records else pd.DataFrame(columns=INPUTS)
+    if records is None:
+        return None
+    result = ensure_ids(pd.DataFrame(records)) if records else pd.DataFrame(columns=INPUTS)
+    result.attrs['analysis_hash'] = analysis_hash(records)
+    return result
 
 
 def restore_prices(frame):

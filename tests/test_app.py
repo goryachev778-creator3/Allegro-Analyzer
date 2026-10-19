@@ -75,7 +75,7 @@ def test_display_order_numbers_and_saved_values():
     assert list(displayed['Produkt']) == ['', '', '']
     import json
     order = list(app.dataframe[0].proto.column_order)
-    assert order[:7] == ['№', 'Фото Komertia', 'Produkt', 'Wariant', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
+    assert order[:8] == ['№', 'Фото Komertia', 'Produkt', 'Wariant', 'Партия', 'Закупка PLN', 'Цена Allegro PLN', 'Комиссия %']
     assert not {'Nazwa produktu', 'Товар', 'Полное название Komertia'} & set(order)
     app.session_state['editor_1'] = {'edited_rows': {0: {'Цена Allegro PLN': 150.0, 'Комиссия %': 9.0}}, 'added_rows': [], 'deleted_rows': []}
     app.run()
@@ -99,7 +99,7 @@ def test_single_main_table_filters_preserve_hidden_rows_and_prices():
     save_analysis(rows)
     app = AppTest.from_file(APP).run()
     assert not app.exception
-    assert [t.label for t in app.tabs] == ['Главная', 'Настройки и импорт']
+    assert [t.label for t in app.tabs] == ['Главная', 'Настройки и импорт', 'Импорт Komertia']
     assert len(app.dataframe) == 1
     order = list(app.dataframe[0].proto.column_order)
     assert 'Прибыль PLN' in order and 'Маржа %' in order

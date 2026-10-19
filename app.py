@@ -29,7 +29,7 @@ from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs
 import pandas as pd
 import streamlit as st
-from storage import load_analysis, save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
+from storage import load_analysis, save_analysis as _save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
 from analyzer import INPUTS, NUMERIC, COLORS, calculate, export_excel, number, read_upload
 from profitability_style import profitability_style
 
@@ -43,9 +43,15 @@ def show_saved():
     else:
         save_indicator.warning("Сохранено только локально. Защита от потери при новом деплое НЕ настроена. Скачайте резервную копию Excel; подключите ALLEGRO_DATABASE_URL в Secrets.")
 
+def save_analysis(frame):
+    token = _save_analysis(frame, expected_hash=st.session_state.get("analysis_expected_hash"))
+    st.session_state["analysis_expected_hash"] = token
+
 try:
     if "products" not in st.session_state:
         restored = load_analysis()
+        if restored is not None:
+            st.session_state["analysis_expected_hash"] = restored.attrs.get("analysis_hash")
         migrated = enrich_details(restored)
         if restored is not None and not migrated.equals(restored):
             save_analysis(migrated)
@@ -87,7 +93,10 @@ import private_link_import
 importlib.reload(private_link_import)
 private_link_import.render()
 
-main_tab, settings_tab = st.tabs(["Главная", "Настройки и импорт"])
+main_tab, settings_tab, komertia_tab = st.tabs(["Главная", "Настройки и импорт", "Импорт Komertia"])
+with komertia_tab:
+    from komertia_import_ui import render as render_komertia_import
+    render_komertia_import()
 
 with settings_tab:
     with st.expander("Восстановить данные из резервной копии Excel"):
@@ -292,6 +301,7 @@ with settings_tab:
             if duplicate_result is not None:
                 deduplicated, removed = duplicate_result
                 st.session_state["products"] = deduplicated
+                st.session_state["analysis_expected_hash"] = deduplicated.attrs.get("analysis_hash")
                 st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
                 st.session_state["duplicate_success"] = f"Удалено повторных строк: {removed}. Заполненные данные сохранены."
                 st.rerun()
@@ -366,6 +376,8 @@ with main_tab:
                 matches |= working[column].astype(str).str.contains(search, case=False, regex=False, na=False)
         mask &= matches
     editor_frame = working.copy()
+    editor_frame["Партия"] = working["Партия"].fillna(order_labels) if "Партия" in working else order_labels
+
     for column in ("Прибыль PLN", "Маржа %", "Статус"):
         editor_frame[column] = calculated[column].to_numpy()
     if product_archive.enabled(working):
@@ -380,12 +392,13 @@ with main_tab:
     low_resolution = sum(1 for size in resolutions if size and max(size) < 800)
     if low_resolution:
         st.caption(f"Фото с низким исходным разрешением: {low_resolution}. Наведите на фото для просмотра оригинала и его размера; маленькие исходники не растягиваются.")
-    column_order = ["№", PHOTO, "Produkt", "Wariant", "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
+    column_order = ["№", PHOTO, "Produkt", "Wariant", "Партия", "Закупка PLN", "Цена Allegro PLN", "Комиссия %", "Комиссия PLN", "Прибыль PLN", "Маржа %"]
     config = {c: st.column_config.NumberColumn(c, min_value=0.0, max_value=100.0 if c == "Комиссия %" else None, format="%.2f", width="medium") for c in NUMERIC}
     sizes = widths(available_width())
     config["№"] = st.column_config.NumberColumn("№", width=sizes["№"], disabled=True, format="%d", pinned=True)
     config[PHOTO] = st.column_config.ImageColumn("Фото", width=sizes[PHOTO])
     config["Produkt"] = st.column_config.TextColumn("Produkt", width=sizes["Produkt"], disabled=True)
+    config["Партия"] = st.column_config.TextColumn("Партия", width=120, disabled=True)
     config["Wariant"] = st.column_config.TextColumn("Wariant", width=sizes["Wariant"], disabled=True)
     for column, label in LABELS.items():
         config[column] = st.column_config.NumberColumn(label, width=sizes[column], format="%.2f",
@@ -399,9 +412,11 @@ with main_tab:
         import hashlib
         editor_key += "_" + hashlib.sha256(str((search, statuses, selected_order)).encode()).hexdigest()[:12]
     visible_edits = st.data_editor(profitability_style(editor_frame), column_order=column_order, column_config=config,
-        disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
+        disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Партия", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
         num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
     changed = visible_edits.drop(columns=["№", "Прибыль PLN", "Маржа %", "Статус"], errors="ignore")
+    if "Партия" not in working:
+        changed = changed.drop(columns=["Партия"], errors="ignore")
     changed = photo_enhancement.restore_original_photos(changed, working)
     if product_archive.enabled(working):
         original_commissions = working.set_index("_position_id")["Комиссия PLN"]
