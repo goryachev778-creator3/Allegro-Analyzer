@@ -50,6 +50,52 @@ Tests cover no-op saves, small delta payloads, photos/archive preservation, stal
 
 ## Expected effect and remaining costs
 
+### Additional synthetic rerun measurement and monthly scenario
+
+Reproduced with `.venv/bin/python benchmarks/neon_traffic.py --baseline e37265e
+--output docs/neon-traffic-synthetic.json` (one command). Uses **only synthetic
+test data**, an in-memory SQL adapter, and no network/database connection.
+41 records, 5.391460 MB JSON, 10 unchanged reruns, 2 price edits:
+
+| Metric | Before | After | Saved |
+| --- | ---: | ---: | ---: |
+| Explicit SQL statements | 72 | 6 | 66 (91.67%) |
+| Connections | 12 | 2 | 10 |
+| Writes | 24 | 4 | 20 |
+| Response payload | 64.745128 MB | 0.000064 MB | 64.745064 MB |
+| Request payload | 64.750440 MB | 0.002578 MB | 64.747862 MB |
+
+MB/GB here are decimal; these are UTF-8 payloads, not observed billed wire bytes.
+The benchmark includes a no-op autosave call for every rerun and verifies identical
+final database state. It excludes startup reads, so the monthly projection adds
+**one full analysis load per new browser session**, including Base64 images.
+
+For the same 10 reruns + 2 edits per fresh session, over 30 days:
+
+| Fresh sessions per day | Before, GB | After, GB |
+| --- | ---: | ---: |
+| 1 | 2.104098 | 0.161746 |
+| 10 | 21.040976 | 1.617457 |
+
+These are explicit scenarios, **not a prediction of the owner's measured activity**:
+no session counts, elapsed quota period, current total database size or production
+telemetry are available here. More/larger photos and frequent full refreshes raise
+the after figure. Protocol/other-key overhead, imports, other apps and storage
+provider traffic are excluded. Actual monthly usage cannot be inferred from the
+4 GB warning alone. Already consumed quota is unaffected. At the 10-session/day
+example, the modeled remaining workload uses about 1.62 GB per full month, plus
+these excluded costs; monitor Neon before concluding it fits the free quota.
+
+### Base64 confirmed; separate storage proposed, not migrated
+
+The importer embeds original image bytes in `analysis`; this is confirmed in code,
+not by inspecting production. The photo-preserving delta optimization works with
+the current format. [Separate private object storage proposal](PHOTO_STORAGE_PROPOSAL.md)
+describes verified immutable originals, short-lived read links, session reuse,
+backup compatibility and staged concurrency-checked migration. **No migration or
+production photo changes are executed by this PR.** Owner approval is required
+before implementing that separate storage change.
+
 For editing/filter-heavy sessions, expect the repeated large-JSON portion to drop by over 99%; the whole monthly reduction depends on workload. A fresh session still loads images; imports/new photographs/structural changes are larger operations. Frequent full browser refreshes, many users, or code outside this app can still consume the free quota. The already-used 4 GB will not be refunded. Staying below 5 GB is not guaranteed.
 
 If an operator needs current production sizes, `diagnostics/neon_traffic_readonly.sql` returns only sizes/counts and does not download the photo JSON. It has not been run against Neon. Monitor actual public-transfer usage in the Neon console after reviewing and deploying the PR. No production database writes, schema changes, deployment or main merge were performed during this work.

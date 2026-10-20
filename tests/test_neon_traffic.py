@@ -111,3 +111,17 @@ def test_journal_refresh_does_not_download_analysis(monkeypatch):
     assert operation_log()==[]
     assert db.responses==0
     assert db.queries==1 and db.connections==1
+
+
+def test_monthly_projection_keeps_full_photo_load_for_every_new_session():
+    from benchmarks.neon_traffic import monthly_projection
+    measured={'scenario':{'analysis_bytes':5_000_000},
+              'before':{'responses':60_000_000},'after':{'responses':64}}
+    projected=monthly_projection(measured,10)
+    assert projected['before_gb']==19.5
+    assert projected['after_gb']==1.500019
+    assert projected['saved_gb']==17.999981
+    # Refreshing the browser ten times costs ten full snapshots, not one.
+    assert monthly_projection(measured,1)['after_gb']==0.150002
+    assert monthly_projection(measured,0)['after_gb']==0
+    with pytest.raises(ValueError):monthly_projection(measured,-1)

@@ -1,0 +1,35 @@
+{
+  "scenario": {
+    "rows": 41,
+    "photo_kib_per_row": 128,
+    "source": "synthetic",
+    "unchanged_reruns": 10,
+    "cell_edits": 2,
+    "analysis_bytes": 5391460,
+    "baseline": "e37265e"
+  },
+  "before": {
+    "queries": 72,
+    "connections": 12,
+    "writes": 24,
+    "requests": 64750440,
+    "responses": 64745128
+  },
+  "after": {
+    "queries": 6,
+    "connections": 2,
+    "writes": 4,
+    "requests": 2578,
+    "responses": 64
+  },
+  "response_reduction_percent": 99.999901,
+  "request_reduction_percent": 99.996019,
+  "monthly_projection": {
+    "days": 30,
+    "fresh_sessions_per_day": 10,
+    "assumed_initial_load_bytes_per_session": 5391460,
+    "before_gb": 21.040976,
+    "after_gb": 1.617457,
+    "saved_gb": 19.423519
+  }
+}

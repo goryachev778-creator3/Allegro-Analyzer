@@ -107,9 +107,31 @@ def measure(rows=41, photo_kib=128, reruns=10, edits=2, baseline='e37265e', weba
             'request_reduction_percent':round((1-after.requests/old_meter.requests)*100,6)}
 
 
+def monthly_projection(measurement, sessions_per_day, days=30):
+    """Scenario, not billing telemetry: one full initial JSON load per session.
+
+    A browser refresh/new session pays this cost again. Other DB keys, protocol
+    overhead, imports and other applications are deliberately not estimated.
+    Decimal GB match the units used in the accompanying report.
+    """
+    if sessions_per_day < 0 or days <= 0:
+        raise ValueError('sessions_per_day must be nonnegative and days positive')
+    sessions = sessions_per_day * days
+    initial = measurement['scenario']['analysis_bytes']
+    before = sessions * (initial + measurement['before']['responses'])
+    after = sessions * (initial + measurement['after']['responses'])
+    return {'days': days, 'fresh_sessions_per_day': sessions_per_day,
+            'assumed_initial_load_bytes_per_session': initial,
+            'before_gb': round(before / 1_000_000_000, 6),
+            'after_gb': round(after / 1_000_000_000, 6),
+            'saved_gb': round((before-after) / 1_000_000_000, 6)}
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--baseline',default='e37265e');parser.add_argument('--output');parser.add_argument('--webarchive')
+    parser.add_argument('--sessions-per-day',type=int,default=10)
     args=parser.parse_args();result=measure(baseline=args.baseline,webarchive=args.webarchive)
+    result['monthly_projection'] = monthly_projection(result,args.sessions_per_day)
     output=json.dumps(result,indent=2)
     print(output)
     if args.output:Path(args.output).write_text(output+'\n')
