@@ -29,7 +29,7 @@ from screenshot_catalog import load_catalog
 from komertia import columns as komertia_columns, apply_costs
 import pandas as pd
 import streamlit as st
-from storage import load_analysis, save_analysis as _save_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
+from storage import load_analysis, merge_import, profile_key, read, write, filter_stock, identify_rows, is_external, backup_excel, read_backup
 from analyzer import INPUTS, NUMERIC, COLORS, calculate, export_excel, number, read_upload
 from profitability_style import profitability_style
 
@@ -44,14 +44,33 @@ def show_saved():
         save_indicator.warning("Сохранено только локально. Защита от потери при новом деплое НЕ настроена. Скачайте резервную копию Excel; подключите ALLEGRO_DATABASE_URL в Secrets.")
 
 def save_analysis(frame):
-    token = _save_analysis(frame, expected_hash=st.session_state.get("analysis_expected_hash"))
-    st.session_state["analysis_expected_hash"] = token
+    from neon_delta import save
+    baseline = st.session_state.get("analysis_baseline")
+    expected_hash = st.session_state.get("analysis_expected_hash")
+    if baseline is not None and storage.analysis_hash(baseline) != expected_hash:
+        baseline = None  # Another explicit legacy operation has replaced this snapshot.
+    digest, token, records = save(frame, baseline=baseline,
+        expected_token=st.session_state.get("analysis_db_token"), expected_hash=expected_hash)
+    st.session_state["analysis_expected_hash"] = digest
+    st.session_state["analysis_db_token"] = token
+    st.session_state["analysis_baseline"] = records
+    st.session_state["has_unsaved_changes"] = False
+
+# Session caches never cross database bindings or users.
+import hashlib
+scope = hashlib.sha256((storage.external_url() or str(storage.database_path())).encode()).hexdigest()
+if st.session_state.get("neon_cache_scope") != scope:
+    for key in ("products", "analysis_baseline", "analysis_expected_hash", "analysis_db_token", "komertia_preview_snapshot", "import_profile_cache", "komertia_parsed_quote"):
+        st.session_state.pop(key, None)
+    st.session_state["neon_cache_scope"] = scope
 
 try:
     if "products" not in st.session_state:
         restored = load_analysis()
         if restored is not None:
             st.session_state["analysis_expected_hash"] = restored.attrs.get("analysis_hash")
+            st.session_state["analysis_baseline"] = restored.attrs.get("analysis_snapshot")
+            st.session_state["analysis_db_token"] = restored.attrs.get("analysis_db_token")
         migrated = enrich_details(restored)
         if restored is not None and not migrated.equals(restored):
             save_analysis(migrated)
@@ -75,6 +94,7 @@ def replace_analysis(frame):
     try:
         save_analysis(frame)
     except Exception as exc:
+        st.session_state["has_unsaved_changes"] = True
         save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
         return False
     st.session_state["products"] = frame.copy()
@@ -84,6 +104,17 @@ def replace_analysis(frame):
     return True
 
 with st.sidebar:
+    reload_confirmed = True
+    if st.session_state.get("has_unsaved_changes"):
+        st.warning("Есть несохранённые правки. Скачайте резервную копию перед обновлением данных.")
+        reload_confirmed = st.checkbox("Подтверждаю отказ от несохранённых правок", key="confirm_discard_unsaved")
+    if st.button("Обновить данные из базы", disabled=not reload_confirmed):
+        for key in ("products", "analysis_baseline", "analysis_expected_hash", "analysis_db_token", "komertia_preview_snapshot", "import_profile_cache", "komertia_parsed_quote"):
+            st.session_state.pop(key, None)
+        st.session_state["has_unsaved_changes"] = False
+        st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
+        st.rerun()
+    st.caption("Неизменённые данные берутся из текущего сеанса. Новые изменения других сеансов — после обновления; при записи проверяется версия базы.")
     st.header("Параметры анализа")
     weak = st.number_input("Порог выгодной маржи, %", 0.0, 100.0, 50.0, 1.0)
     st.markdown(f"🟢 Маржа ≥ {weak:g}% и прибыль > 0  \n🟡 Прибыль ≥ 0 и маржа < {weak:g}%; также нулевая прибыль  \n🔴 Прибыль < 0  \n⚪ Цена не задана")
@@ -151,7 +182,10 @@ with settings_tab:
             with st.expander("Предпросмотр выгрузки", expanded=False):
                 st.dataframe(raw.head(10), hide_index=True)
             profile = profile_key(upload.name, sheet, raw.columns)
-            preferences = read(profile) or {}
+            profiles = st.session_state.setdefault("import_profile_cache", {})
+            if profile not in profiles:
+                profiles[profile] = read(profile) or {}
+            preferences = profiles[profile]
             with st.form("mapping_" + profile):
                 st.subheader("Сопоставление колонок")
                 st.caption("Необязательные поля можно оставить пустыми: будут использованы значения по умолчанию. Закупку в валюте пересчитаем в PLN.")
@@ -204,6 +238,7 @@ with settings_tab:
                 apply = st.form_submit_button("Загрузить в таблицу", type="primary")
             if apply:
                 write(profile, {"mapping": mapping, "defaults": defaults, "rate": rate, "stock": stock, **identity_columns, "row_id": row_id, "source_lp": source_lp_column})
+                st.session_state.get("import_profile_cache", {}).pop(profile, None)
                 if mapping["Товар"] != options[0]:
                     product_col = identity_columns["Produkt"] if identity_columns["Produkt"] != options[0] else mapping["Товар"]
                     raw = identify_rows(raw, product_col, identity_columns["Wariant"] if identity_columns["Wariant"] != options[0] else None, row_id if row_id != options[0] else source_lp_column if source_lp_column != options[0] else None, stock if stock != options[0] else None)
@@ -430,16 +465,19 @@ with main_tab:
                     edited.loc[location, column] = row[column]
     else:
         edited = changed.reset_index(drop=True)
+    saved_ok = False
     try:
         save_analysis(edited)
         st.session_state["products"] = edited.copy()
+        saved_ok = True
         show_saved()
     except Exception as exc:
+        st.session_state["has_unsaved_changes"] = True
         save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
-    if len(edited) != len(working):
+    if saved_ok and len(edited) != len(working):
         if replace_analysis(edited):
             st.rerun()
-    if not edited.equals(working):
+    if saved_ok and not edited.equals(working):
         st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
         st.rerun()
     if edited.empty:

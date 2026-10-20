@@ -1,11 +1,23 @@
 """Streamlit quote preview/confirmation. Does not write until explicitly confirmed."""
 from datetime import date
+import time
+import hashlib
 import pandas as pd
 import streamlit as st
 import storage
 from komertia_details import PHOTO
 from komertia_quote import parse_quote, QuoteError
-from komertia_import_service import snapshot, plan_import, confirm_import, ImportErrorSafe
+from komertia_import_service import snapshot, operation_log, plan_import, confirm_import, ImportErrorSafe
+
+
+def projected_preview(digest):
+    """Session-only, short-lived metadata cache; never used for the commit path."""
+    cached = st.session_state.get('komertia_preview_snapshot')
+    if not cached or cached[0] != digest or time.monotonic()-cached[1] > 30:
+        existing, _ = snapshot()
+        cached = (digest, time.monotonic(), existing)
+        st.session_state['komertia_preview_snapshot'] = cached
+    return cached[2]
 
 
 def render():
@@ -18,7 +30,14 @@ def render():
     if upload:
         source = st.text_input('Ссылка на заказ Komertia', key='komertia_html_source') if upload.name.lower().endswith(('.html','.htm')) else ''
         try:
-            quote = parse_quote(upload.getvalue(), upload.name, batch, source)
+            payload = upload.getvalue()
+            cache_key = hashlib.sha256(payload).hexdigest() + batch + source
+            cached = st.session_state.get('komertia_parsed_quote')
+            if cached and cached[0] == cache_key:
+                quote = cached[1]
+            else:
+                quote = parse_quote(payload, upload.name, batch, source)
+                st.session_state['komertia_parsed_quote'] = (cache_key, quote)
             st.session_state['komertia_last_validation_error'] = ''
         except (QuoteError, ValueError, TypeError, OverflowError):
             st.error('Файл не прошёл проверку: проверьте структуру выцены, исходную ссылку, фотографии, количество и итоговые суммы. Импорт не выполнялся.')
@@ -40,7 +59,8 @@ def render():
             can_save = False
             try:
                 if storage.is_external():
-                    existing, log = snapshot()
+                    existing = projected_preview(quote.digest)
+                    st.caption('Предпросмотр совпадений кешируется на 30 секунд. При подтверждении база перечитывается под блокировкой.')
                     additions, states, archived = plan_import(existing, quote)
                     preview['Проверка'] = states
                     st.caption(f'Будет добавлено: {len(additions)}. Уже есть: {len(states)-len(additions)}. Архивных совпадений: {archived}; они останутся в архиве.')
@@ -59,6 +79,9 @@ def render():
                     records, event = confirm_import(checked, acknowledged=acknowledged)
                     st.session_state['products'] = storage.ensure_ids(pd.DataFrame(records))
                     st.session_state['analysis_expected_hash'] = storage.analysis_hash(records)
+                    st.session_state['analysis_baseline'] = records
+                    st.session_state['analysis_db_token'] = event.get('analysis_db_token')
+                    st.session_state.pop('komertia_preview_snapshot', None)
                     st.session_state['editor_revision'] = st.session_state.get('editor_revision',0)+1
                     st.session_state['komertia_import_success'] = f"Добавлено: {event['added']}. Пропущено существующих: {event['skipped']}. Транзакция подтверждена в Neon."
                     st.rerun()
@@ -69,7 +92,7 @@ def render():
     with st.expander('Журнал операций импорта'):
         if st.button('Обновить журнал импорта', disabled=not storage.is_external()):
             try:
-                _, log = snapshot()
+                log = operation_log()
                 rows = [{k:e.get(k) for k in ('time','batch','order_id','status','added','skipped','archived_untouched')} for e in reversed(log)]
                 st.dataframe(pd.DataFrame(rows), hide_index=True)
             except ImportErrorSafe as exc:

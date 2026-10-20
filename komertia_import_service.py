@@ -36,8 +36,8 @@ def plan_import(existing, quote):
     return additions, states, archived
 
 
-def snapshot():
-    """Preview must not call the legacy loader that migrates names/archives."""
+def snapshot(include_log=False):
+    """Small server-side projection: never download photos for duplicate preview."""
     if not storage.is_external():
         raise ImportErrorSafe('Neon не подключён: настройте ALLEGRO_DATABASE_URL в Streamlit Secrets.')
     try:
@@ -48,15 +48,38 @@ def snapshot():
         with db:
             if db.execute('SELECT current_database()').fetchone()[0] != 'neondb':
                 raise ImportErrorSafe('Выбрана другая база. Импорт разрешён только в neondb.')
-            rows = db.execute("SELECT key,value FROM public.allegro_state WHERE key IN ('analysis','prices',%s)", (LOG_KEY,)).fetchall()
-            state = {key: decode(value) for key, value in rows}
-            if not isinstance(state.get('analysis'), list) or not isinstance(state.get('prices'), dict):
+            types = dict(db.execute("SELECT key,jsonb_typeof(value::jsonb) FROM public.allegro_state WHERE key IN ('analysis','prices')").fetchall())
+            if types.get('analysis') != 'array' or types.get('prices') != 'object':
                 raise ImportErrorSafe('Не найдены существующие analysis/prices в public.allegro_state.')
-            return state['analysis'], state.get(LOG_KEY, [])
+            row = db.execute("""SELECT coalesce(jsonb_agg(jsonb_build_object(
+                '_position_id',e->'_position_id','source_order_id',e->'source_order_id',
+                'source_product_id',e->'source_product_id','Ilość',e->'Ilość',
+                'Закупка PLN',e->'Закупка PLN','_archived_no_allegro_price',e->'_archived_no_allegro_price',
+                '_archived_duplicate',e->'_archived_duplicate')), '[]'::jsonb)
+                FROM public.allegro_state, jsonb_array_elements(value::jsonb) e WHERE key='analysis'""").fetchone()
+            log = _read(db, LOG_KEY) or [] if include_log else []
+            return decode(row[0]), log
     except ImportErrorSafe:
         raise
     except Exception:
         raise ImportErrorSafe('Не удалось прочитать Neon. Проверьте подключение и права; реквизиты в сообщении не выводятся.') from None
+    finally:
+        db.close()
+
+
+def operation_log():
+    """Explicit audit refresh reads only its key, never analysis/photos."""
+    if not storage.is_external():
+        raise ImportErrorSafe('Neon не подключён.')
+    try:
+        db = storage.state_connection(ensure_table=False)
+    except Exception:
+        raise ImportErrorSafe('Neon недоступен. Журнал не обновлён; реквизиты скрыты.') from None
+    try:
+        with db:
+            return _read(db, LOG_KEY) or []
+    except Exception:
+        raise ImportErrorSafe('Не удалось обновить журнал. Реквизиты подключения скрыты.') from None
     finally:
         db.close()
 
@@ -71,6 +94,19 @@ def _write(db, key, value):
 def _read(db, key):
     row = db.execute('SELECT value FROM public.allegro_state WHERE key=%s', (key,)).fetchone()
     return decode(row[0]) if row else None
+
+
+def _append_analysis(db, additions):
+    """Only new rows cross the wire; existing photo JSON stays on the server."""
+    row = db.execute("""WITH expected AS MATERIALIZED (
+        SELECT value::jsonb || %s::jsonb AS data FROM public.allegro_state WHERE key='analysis'
+    ) UPDATE public.allegro_state SET value=(jsonb_populate_record(NULL::public.allegro_state,
+        jsonb_build_object('value',expected.data))).value FROM expected WHERE key='analysis'
+        RETURNING md5(value::text),value::jsonb=expected.data""",
+        (json.dumps(additions, ensure_ascii=False, allow_nan=False),)).fetchone()
+    if not row or row[1] is not True:
+        raise ImportErrorSafe('Проверка записи не пройдена. Транзакция отменена.')
+    return row[0]
 
 
 def _log_failure(quote):
@@ -143,10 +179,15 @@ def confirm_import(quote, acknowledged=False):
                      'status': 'imported' if additions else 'already_imported', 'added': len(additions),
                      'skipped': len(states)-len(additions), 'archived_untouched': archived, 'report': quote.report}
             if additions:
-                _write(db, 'analysis', combined)
+                token = _append_analysis(db, additions)
                 _write(db, 'prices', new_prices)
+            else:
+                from neon_delta import wire_token
+                token = wire_token(db)
+            event['analysis_db_token'] = token
             _write(db, LOG_KEY, log + [event])
-            if _read(db, 'analysis') != combined or _read(db, 'prices') != new_prices or _read(db, LOG_KEY) != log + [event]:
+            stored = db.execute("SELECT md5(value::text),jsonb_array_length(value::jsonb) FROM public.allegro_state WHERE key='analysis'").fetchone()
+            if not stored or stored[0] != token or stored[1] != len(combined) or _read(db, 'prices') != new_prices or _read(db, LOG_KEY) != log + [event]:
                 raise ImportErrorSafe('Проверка записи не пройдена. Транзакция отменена.')
             # Additional checks protect old records, including arbitrary metadata/photos.
             if combined[:len(before)] != before or any(new_prices.get(k) != v for k, v in prices.items()):
