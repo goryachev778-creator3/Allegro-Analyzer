@@ -1,0 +1,27 @@
+{
+  "scenario": {
+    "rows": 41,
+    "photo_kib_per_row": null,
+    "source": "provided_archive",
+    "unchanged_reruns": 10,
+    "cell_edits": 2,
+    "analysis_bytes": 11828533,
+    "baseline": "e37265e"
+  },
+  "before": {
+    "queries": 72,
+    "connections": 12,
+    "writes": 24,
+    "requests": 142010178,
+    "responses": 142004878
+  },
+  "after": {
+    "queries": 6,
+    "connections": 2,
+    "writes": 4,
+    "requests": 2684,
+    "responses": 64
+  },
+  "response_reduction_percent": 99.999955,
+  "request_reduction_percent": 99.99811
+}

@@ -47,8 +47,7 @@ def state_connection(ensure_table=True):
             raise ValueError('TLS required')
         settings.setdefault('sslmode', 'require')
         db = psycopg.connect(**settings, connect_timeout=10)
-        if ensure_table:
-            db.execute('CREATE TABLE IF NOT EXISTS public.allegro_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        # Existing production schema is required; do not execute DDL per connection.
         return db
     except Exception:
         raise RuntimeError('Внешняя база недоступна. Автосохранение не выполнено. Проверьте ALLEGRO_DATABASE_URL в Secrets.') from None
@@ -93,7 +92,7 @@ def analysis_hash(records):
     return hashlib.sha256(json.dumps(records, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
-def save_analysis(frame, expected_hash=None):
+def save_analysis(frame, expected_hash=None, return_token=False):
     frame = ensure_ids(frame.reset_index(drop=True))
     records = frame.astype(object).where(pd.notna(frame), None).to_dict('records')
     db = state_connection()
@@ -104,17 +103,23 @@ def save_analysis(frame, expected_hash=None):
             current = read_from(db, 'analysis')
             if expected_hash is not None and analysis_hash(current or []) != expected_hash:
                 raise ValueError('Данные изменились в другой сессии или после импорта. Автосохранение остановлено: скачайте резервную копию и обновите страницу.')
+            if records == current:
+                from neon_delta import wire_token
+                token = wire_token(db) if is_external() and return_token else None
+                return (analysis_hash(records), token) if return_token else analysis_hash(records)
             prices = {canonical_id(k): v for k, v in (read_from(db, 'prices') or {}).items()}
             for row in records:
                 prices[row['_position_id']] = {c: row[c] for c in SALES}
             write_to(db, 'prices', prices)
             write_to(db, 'analysis', records)
-        return analysis_hash(records)
+            from neon_delta import wire_token
+            token = wire_token(db) if is_external() and return_token else None
+        return (analysis_hash(records), token) if return_token else analysis_hash(records)
     finally:
         db.close()
 
 
-def restore_product_names():
+def restore_product_names(include_token=False):
     """Persist original Produkt/Wariant without changing identities or prices."""
     from komertia_details import original_record
     db = state_connection()
@@ -129,13 +134,17 @@ def restore_product_names():
             if records is not None and restored != records:
                 write_to(db, 'analysis', restored)
                 records = restored
-            return records
+            token = None
+            if is_external() and include_token:
+                from neon_delta import wire_token
+                token = wire_token(db)
+            return (records, token) if include_token else records
     finally:
         db.close()
 
 
 def load_analysis():
-    records = restore_product_names()
+    records, db_token = restore_product_names(include_token=True)
     if records is None and is_external() and database_path().exists():
         local = sqlite3.connect(database_path())
         try:
@@ -149,6 +158,8 @@ def load_analysis():
         return None
     result = ensure_ids(pd.DataFrame(records)) if records else pd.DataFrame(columns=INPUTS)
     result.attrs['analysis_hash'] = analysis_hash(records)
+    result.attrs['analysis_snapshot'] = records
+    result.attrs['analysis_db_token'] = db_token
     return result
 
 

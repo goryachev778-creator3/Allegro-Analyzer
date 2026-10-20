@@ -84,6 +84,15 @@ class MemoryPostgres:
         if t:self.state=self.before
     def close(self):self.closed=True
     def execute(self,sql,args=()):
+        import hashlib
+        def token():return hashlib.md5(json.dumps(self.state.get('analysis')).encode()).hexdigest()
+        if sql.startswith('WITH expected AS MATERIALIZED'):
+            self.state['analysis'] += json.loads(args[0])
+            return Cursor([(token(),True)])
+        if sql.startswith('SELECT md5(value::text),jsonb_array_length'):
+            return Cursor([(token(),len(self.state.get('analysis',[])))])
+        if sql.startswith('SELECT md5(value::text)'):
+            return Cursor([(token(),)])
         if sql=='SELECT current_database()':return Cursor([('neondb',)])
         if sql.startswith('SELECT value FROM'):
             key=args[0];value=self.state.get(key)

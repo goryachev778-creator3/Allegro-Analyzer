@@ -153,4 +153,7 @@ def test_stale_streamlit_session_does_not_erase_external_import():
     assert not app.exception
     assert len(storage.read('analysis')) == 4
     assert storage.read('analysis')[-1]['_position_id'] == 'concurrently-imported'
+    # Read-only reruns now use the session cache and do not contact Neon.
+    app.session_state['editor_1'] = {'edited_rows': {0: {'Цена Allegro PLN': 444.0}}, 'added_rows': [], 'deleted_rows': []}
+    app.run()
     assert any('Автосохранение остановлено' in e.value for e in app.error)
