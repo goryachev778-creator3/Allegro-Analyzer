@@ -102,7 +102,11 @@ def save_analysis(frame, expected_hash=None):
             if is_external():
                 db.execute('SELECT pg_advisory_xact_lock(%s)', (190102026,))
             current = read_from(db, 'analysis')
-            if expected_hash is not None and analysis_hash(current or []) != expected_hash:
+            # An absent analysis or absent optimistic-concurrency token must
+            # never silently replace a previously imported Neon workspace.
+            if not current or expected_hash is None:
+                raise ValueError("Сохранение заблокировано: отсутствует подтверждённая версия анализа Neon.")
+            if analysis_hash(current) != expected_hash:
                 raise ValueError('Данные изменились в другой сессии или после импорта. Автосохранение остановлено: скачайте резервную копию и обновите страницу.')
             prices = {canonical_id(k): v for k, v in (read_from(db, 'prices') or {}).items()}
             for row in records:
@@ -135,19 +139,11 @@ def restore_product_names():
 
 
 def load_analysis():
-    records = restore_product_names()
-    if records is None and is_external() and database_path().exists():
-        local = sqlite3.connect(database_path())
-        try:
-            entry = local.execute("SELECT value FROM state WHERE key = 'analysis'").fetchone()
-        finally:
-            local.close()
-        if entry:
-            records = json.loads(entry[0])
-            save_analysis(pd.DataFrame(records) if records else pd.DataFrame(columns=INPUTS))
-    if records is None:
+    """Read confirmed Neon data; NEVER overwrite from a local fallback on startup."""
+    records = read('analysis')
+    if not records:
         return None
-    result = ensure_ids(pd.DataFrame(records)) if records else pd.DataFrame(columns=INPUTS)
+    result = ensure_ids(pd.DataFrame(records))
     result.attrs['analysis_hash'] = analysis_hash(records)
     return result
 
