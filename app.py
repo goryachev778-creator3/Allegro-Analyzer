@@ -38,37 +38,48 @@ st.title("Allegro Analyzer")
 save_indicator = st.empty()
 
 def show_saved():
-    if is_external():
-        save_indicator.success("Сохранено в Neon PostgreSQL")
+    # A configured URL is not proof of a successful save. Show this message
+    # only after a successful database health check (and successful load/save).
+    if st.session_state.get("neon_verified") and st.session_state.get("storage_ready"):
+        save_indicator.success("Подключено к Neon PostgreSQL. Данные загружены из базы.")
     else:
-        save_indicator.warning("Сохранено только локально. Защита от потери при новом деплое НЕ настроена. Скачайте резервную копию Excel; подключите ALLEGRO_DATABASE_URL в Secrets.")
+        save_indicator.error("Сохранение недоступно. Данные Neon не подтверждены.")
+
+
+def require_storage_ready():
+    if not st.session_state.get("neon_verified") or not st.session_state.get("storage_ready"):
+        raise RuntimeError("Neon недоступен: запись заблокирована для защиты существующих товаров.")
 
 def save_analysis(frame):
+    require_storage_ready()
     token = _save_analysis(frame, expected_hash=st.session_state.get("analysis_expected_hash"))
     st.session_state["analysis_expected_hash"] = token
 
-try:
-    if "products" not in st.session_state:
+# Every rerun performs a read-only preflight, including when a session previously
+# loaded products. Losing Neon access must immediately disable *all* editing.
+from neon_health import check_neon_health
+neon_status = check_neon_health()
+st.session_state["neon_verified"] = neon_status["status"] == "OK"
+st.session_state["storage_ready"] = False
+storage_problem = None
+if not st.session_state["neon_verified"]:
+    storage_problem = neon_status["message"]
+else:
+    try:
+        # Prefer a fresh snapshot rather than stale browser state after an outage.
         restored = load_analysis()
-        if restored is not None:
-            st.session_state["analysis_expected_hash"] = restored.attrs.get("analysis_hash")
-        migrated = enrich_details(restored)
-        if restored is not None and not migrated.equals(restored):
-            save_analysis(migrated)
-        restored = migrated
-        if restored is not None and not restored.empty:
-            archived, archive_notice = product_archive.prepare(restored)
-            if not archived.equals(restored):
-                save_analysis(archived)
-                restored = archived
-            st.session_state["archive_notice"] = archive_notice
-        if restored is not None:
-            st.session_state["products"] = restored
-    show_saved()
-except Exception as exc:
-    save_indicator.error(f"Есть несохранённые изменения · хранилище недоступно: {exc}")
-    if "products" not in st.session_state:
-        st.session_state["products"] = pd.DataFrame(columns=INPUTS)
+        if restored is None or restored.empty:
+            raise RuntimeError("В Neon отсутствует рабочий анализ. Не создавайте новую таблицу.")
+        st.session_state["analysis_expected_hash"] = restored.attrs.get("analysis_hash")
+        st.session_state["products"] = restored
+        st.session_state["storage_ready"] = True
+        show_saved()
+    except Exception:
+        storage_problem = "Не удалось прочитать сохранённый анализ Neon. Изменения заблокированы."
+        st.session_state["storage_ready"] = False
+
+if storage_problem:
+    save_indicator.error("Neon недоступен. Сохранение и импорт ЗАБЛОКИРОВАНЫ: " + storage_problem)
 
 
 def replace_analysis(frame):
@@ -84,10 +95,26 @@ def replace_analysis(frame):
     return True
 
 with st.sidebar:
+    with st.expander("🔎 Диагностика Neon", expanded=False):
+        st.caption("Проверка только читает данные. Пароли и строка подключения не выводятся.")
+        if st.button("Проверить подключение Neon", key="neon_health_check"):
+            from neon_health import check_neon_health
+            health = check_neon_health()
+            if health["status"] == "OK":
+                st.success(f'{health["message"]} Позиций в базе: {health["positions"]}.')
+            else:
+                st.error(f'{health["status"]}: {health["message"]}')
+
     st.header("Параметры анализа")
     weak = st.number_input("Порог выгодной маржи, %", 0.0, 100.0, 50.0, 1.0)
     st.markdown(f"🟢 Маржа ≥ {weak:g}% и прибыль > 0  \n🟡 Прибыль ≥ 0 и маржа < {weak:g}%; также нулевая прибыль  \n🔴 Прибыль < 0  \n⚪ Цена не задана")
 
+
+# Keep the diagnostic sidebar visible, but hide ALL write-enabled screens
+# while database access or the existing analysis cannot be verified.
+if not st.session_state.get("storage_ready"):
+    st.warning("Режим защиты: все операции записи отключены. Не импортируйте товары повторно.")
+    st.stop()
 
 import private_link_import
 importlib.reload(private_link_import)
