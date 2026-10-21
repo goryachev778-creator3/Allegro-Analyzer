@@ -84,6 +84,16 @@ def replace_analysis(frame):
     return True
 
 with st.sidebar:
+    with st.expander("🔎 Диагностика Neon", expanded=False):
+        st.caption("Проверка только читает данные. Пароли и строка подключения не выводятся.")
+        if st.button("Проверить подключение Neon", key="neon_health_check"):
+            from neon_health import check_neon_health
+            health = check_neon_health()
+            if health["status"] == "OK":
+                st.success(f'{health["message"]} Позиций в базе: {health["positions"]}.')
+            else:
+                st.error(f'{health["status"]}: {health["message"]}')
+
     st.header("Параметры анализа")
     weak = st.number_input("Порог выгодной маржи, %", 0.0, 100.0, 50.0, 1.0)
     st.markdown(f"🟢 Маржа ≥ {weak:g}% и прибыль > 0  \n🟡 Прибыль ≥ 0 и маржа < {weak:g}%; также нулевая прибыль  \n🔴 Прибыль < 0  \n⚪ Цена не задана")
