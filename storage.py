@@ -40,16 +40,10 @@ def state_connection(ensure_table=True):
     if not external_url():
         return connect()
     try:
-        import psycopg
-        from psycopg.conninfo import conninfo_to_dict
-        settings = conninfo_to_dict(external_url())
-        if settings.get('sslmode') in ('disable', 'allow', 'prefer'):
-            raise ValueError('TLS required')
-        settings.setdefault('sslmode', 'require')
-        db = psycopg.connect(**settings, connect_timeout=10)
-        if ensure_table:
-            db.execute('CREATE TABLE IF NOT EXISTS public.allegro_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
-        return db
+        from neon_connection import connect_neon
+        # Production schema must already exist. Never create tables while probing
+        # connectivity (including for roles without schema CREATE privileges).
+        return connect_neon(external_url())
     except Exception:
         raise RuntimeError('Внешняя база недоступна. Автосохранение не выполнено. Проверьте ALLEGRO_DATABASE_URL в Secrets.') from None
 

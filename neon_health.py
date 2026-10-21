@@ -16,7 +16,12 @@ def _safe_error(exc):
         return "ROLE_INVALID", "Указанная роль Neon не имеет доступа."
     if code == "42501":
         return "PERMISSION_DENIED", "Недостаточно прав для чтения таблицы."
-    text = str(exc).lower()  # Classify privately; never return raw exception text.
+    import re
+    # A URL in an error may itself contain words such as sslmode/connect_timeout.
+    # Remove URLs before categorizing; never expose the remainder either.
+    text = re.sub(r'postgres(?:ql)?://\S+', '', str(exc).lower())
+    if 'neon_tls_required' in text:
+        return 'TLS_REQUIRED', 'Для Neon необходимо sslmode=require или более строгий режим проверки.'
     if 'unsupported startup parameter' in text:
         return 'POOLER_STARTUP_PARAMETER', 'Pooled endpoint отклонил стартовый параметр. Удалите options из URL; проверьте pooled URL в Neon Connect.'
     if 'password authentication failed' in text or 'authentication failed' in text:
@@ -27,7 +32,9 @@ def _safe_error(exc):
         return 'NETWORK_UNAVAILABLE', 'Проверьте статус compute Neon и доступ Streamlit Cloud к endpoint:5432.'
     if 'ssl' in text or 'tls' in text or 'certificate' in text or 'channel binding' in text:
         return 'TLS_FAILURE', 'Ошибка TLS или channel binding. Используйте параметры из Neon Connect; не отключайте SSL.'
-    from psycopg import OperationalError
+    from psycopg import OperationalError, ProgrammingError
+    if isinstance(exc, (ProgrammingError, ValueError, TypeError)):
+        return 'INVALID_CONNECTION_STRING', 'Проверьте формат ALLEGRO_DATABASE_URL в Streamlit Secrets. Используйте PostgreSQL URI из Neon Connect.'
     if isinstance(exc, OperationalError):
         return "CONNECTION_FAILED", "Не удалось подключиться к Neon: проверьте статус базы, адрес и параметры подключения."
     return "CHECK_FAILED", "Не удалось проверить базу. Подробности смотрите в закрытых журналах Streamlit."

@@ -63,7 +63,7 @@ st.session_state["neon_verified"] = neon_status["status"] == "OK"
 st.session_state["storage_ready"] = False
 storage_problem = None
 if not st.session_state["neon_verified"]:
-    storage_problem = neon_status["message"]
+    storage_problem = f'{neon_status["status"]}: {neon_status["message"]}'
 else:
     try:
         # Prefer a fresh snapshot rather than stale browser state after an outage.
