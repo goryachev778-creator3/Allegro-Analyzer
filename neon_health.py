@@ -7,19 +7,34 @@ from __future__ import annotations
 
 
 def _safe_error(exc):
+    """Categorise connection failures without exposing hosts, users or secrets."""
     code = getattr(exc, "sqlstate", None)
     if code == "28P01":
-        return "AUTH_FAILED", "Ошибка авторизации Neon. Проверьте пароль в Streamlit Secrets."
+        return "AUTH_FAILED", "Neon отклонил пароль пользователя."
     if code == "3D000":
         return "DATABASE_MISSING", "Указанная база Neon не найдена."
     if code == "28000":
-        return "ROLE_INVALID", "Указанная роль Neon не имеет доступа."
+        return "ROLE_INVALID", "Neon отклонил пользователя или роль."
     if code == "42501":
         return "PERMISSION_DENIED", "Недостаточно прав для чтения таблицы."
     from psycopg import OperationalError
     if isinstance(exc, OperationalError):
-        return "CONNECTION_FAILED", "Не удалось подключиться к Neon: проверьте статус базы, адрес и параметры подключения."
-    return "CHECK_FAILED", "Не удалось проверить базу. Подробности смотрите в закрытых журналах Streamlit."
+        # Match phrases privately; never show the exception itself.
+        message = str(exc).lower()
+        if "password authentication failed" in message or "authentication failed" in message:
+            return "AUTH_FAILED", "Неверный пароль Neon или пользователь базы."
+        if "could not translate host name" in message or "name or service not known" in message or "nodename nor servname provided" in message or "temporary failure in name resolution" in message:
+            return "DNS_FAILED", "Streamlit не может разрешить имя сервера Neon. Проверьте hostname в Secrets."
+        if "timeout" in message or "timed out" in message:
+            return "TIMEOUT", "Соединение с Neon превышает время ожидания."
+        if "connection refused" in message or "server closed the connection" in message:
+            return "CONNECTION_REFUSED", "Neon не принимает соединение по указанному адресу/порту."
+        if "certificate verify failed" in message or "ssl" in message or "tls" in message:
+            return "TLS_FAILED", "Ошибка защищённого SSL/TLS соединения с Neon."
+        if "database" in message and "does not exist" in message:
+            return "DATABASE_MISSING", "Указанная база Neon не существует."
+        return "CONNECTION_FAILED", "Ошибка соединения с Neon. Проверьте статус проекта и строку подключения."
+    return "CHECK_FAILED", "Не удалось выполнить проверку. Пароли и адреса скрыты."
 
 
 def check_neon_health():
