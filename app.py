@@ -54,6 +54,7 @@ def save_analysis(frame):
     require_storage_ready()
     token = _save_analysis(frame, expected_hash=st.session_state.get("analysis_expected_hash"))
     st.session_state["analysis_expected_hash"] = token
+    st.session_state.pop("neon_snapshot_signature", None)
 
 # Every rerun performs a read-only preflight, including when a session previously
 # loaded products. Losing Neon access must immediately disable *all* editing.
@@ -64,19 +65,35 @@ st.session_state["storage_ready"] = False
 storage_problem = None
 if not st.session_state["neon_verified"]:
     storage_problem = neon_status["message"]
+    # Fail closed even if stale browser session still has a cached frame.
+    st.session_state.pop("neon_snapshot_signature", None)
 else:
     try:
-        # Prefer a fresh snapshot rather than stale browser state after an outage.
-        restored = load_analysis()
-        if restored is None or restored.empty:
-            raise RuntimeError("В Neon отсутствует рабочий анализ. Не создавайте новую таблицу.")
-        st.session_state["analysis_expected_hash"] = restored.attrs.get("analysis_hash")
-        st.session_state["products"] = restored
+        # Download the large analysis only on the first load or when another
+        # session has changed it. Each rerun otherwise transfers only a
+        # 32-character fingerprint and row count, not embedded image data.
+        snapshot_signature = neon_status["signature"]
+        has_cached = (
+            st.session_state.get("neon_snapshot_signature") == snapshot_signature
+            and "products" in st.session_state
+            and not st.session_state["products"].empty
+            and st.session_state.get("analysis_expected_hash") is not None
+        )
+        if not has_cached:
+            restored = load_analysis()
+            if restored is None or restored.empty:
+                raise RuntimeError("В Neon отсутствует рабочий анализ. Не создавайте новую таблицу.")
+            if len(restored) != neon_status["positions"]:
+                raise RuntimeError("Количество записей изменилось во время загрузки. Обновите страницу.")
+            st.session_state["analysis_expected_hash"] = restored.attrs.get("analysis_hash")
+            st.session_state["products"] = restored
+            st.session_state["neon_snapshot_signature"] = snapshot_signature
         st.session_state["storage_ready"] = True
         show_saved()
     except Exception:
         storage_problem = "Не удалось прочитать сохранённый анализ Neon. Изменения заблокированы."
         st.session_state["storage_ready"] = False
+        st.session_state.pop("neon_snapshot_signature", None)
 
 if storage_problem:
     save_indicator.error("Neon недоступен. Сохранение и импорт ЗАБЛОКИРОВАНЫ: " + storage_problem)

@@ -57,12 +57,12 @@ def check_neon_health():
             if found is None:
                 return {"status": "TABLE_MISSING", "message": "Таблица allegro_state отсутствует. Не создавайте новую базу поверх старой."}
             row = db.execute(
-                "SELECT jsonb_array_length(value::jsonb) FROM public.allegro_state WHERE key = %s",
+                "SELECT jsonb_array_length(value::jsonb), md5(value) FROM public.allegro_state WHERE key = %s",
                 ("analysis",),
             ).fetchone()
             if row is None:
                 return {"status": "ANALYSIS_MISSING", "message": "Подключение работает, но запись analysis не найдена."}
-            return {"status": "OK", "message": "Подключение к Neon работает.", "positions": int(row[0])}
+            return {"status": "OK", "message": "Подключение к Neon работает.", "positions": int(row[0]), "signature": row[1]}
     except Exception as exc:
         try:
             status, message = _safe_error(exc)
