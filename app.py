@@ -431,7 +431,17 @@ with main_tab:
     editor_frame[PHOTO] = editor_frame.apply(photo_enhancement.best_available_original, axis=1) if not editor_frame.empty else editor_frame[PHOTO]
     st.markdown("<style>.gdg-clip-region img{min-width:0!important;min-height:0!important;width:auto!important;height:auto!important;max-width:100%!important;max-height:70vh!important;object-fit:contain!important}</style>", unsafe_allow_html=True)
     st.subheader("Товары")
-    st.caption(f"Показано: {len(editor_frame)} из {int(product_rows.sum())}")
+    st.caption(f"Показано: {len(editor_frame)} из {int(product_rows.sum())} активных товаров")
+    with st.expander("📊 Проверка сохранности всех записей", expanded=False):
+        all_records = len(working)
+        order_totals_count = int(working.apply(is_order_total, axis=1).sum())
+        total_product_count = all_records - order_totals_count
+        inactive_count = total_product_count - int(product_rows.sum())
+        st.write(f"Всего записей в Neon: **{all_records}**")
+        st.write(f"Товарных позиций (включая скрытые): **{total_product_count}**")
+        st.write(f"Скрытых фильтром или архивом: **{inactive_count}**")
+        st.write(f"Служебных строк итогов заказов: **{order_totals_count}**")
+        st.caption("Это подсчёт уже загруженного анализа без дополнительных запросов к Neon. Записи не изменяются.")
     resolutions = [photo_enhancement.original_resolution(photo) for photo in editor_frame[PHOTO]]
     low_resolution = sum(1 for size in resolutions if size and max(size) < 800)
     if low_resolution:
@@ -474,18 +484,13 @@ with main_tab:
                     edited.loc[location, column] = row[column]
     else:
         edited = changed.reset_index(drop=True)
-    try:
-        save_analysis(edited)
-        st.session_state["products"] = edited.copy()
-        show_saved()
-    except Exception as exc:
-        save_indicator.error(f"Есть несохранённые изменения · ошибка сохранения: {exc}")
-    if len(edited) != len(working):
+    # Never rewrite the large JSON analysis merely because Streamlit reruns.
+    # Preserve unchanged photos, order, prices and IDs; write only actual edits.
+    if not edited.equals(working):
         if replace_analysis(edited):
             st.rerun()
-    if not edited.equals(working):
-        st.session_state["editor_revision"] = st.session_state.get("editor_revision", 0) + 1
-        st.rerun()
+        # Save failed: do not treat the unsaved editor frame as committed data.
+        edited = working.copy()
     if edited.empty:
         st.info("Добавьте товар.")
     else:
