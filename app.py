@@ -137,7 +137,41 @@ import private_link_import
 importlib.reload(private_link_import)
 private_link_import.render()
 
-main_tab, settings_tab, komertia_tab = st.tabs(["Главная", "Настройки и импорт", "Импорт Komertia"])
+main_tab, settings_tab, komertia_tab, apify_tab = st.tabs(["Главная", "Настройки и импорт", "Импорт Komertia", "Apify — сравнение цен"])
+
+with apify_tab:
+    st.subheader("Предложения Allegro из Apify")
+    st.caption("Только просмотр уже собранных предложений. Запуск платного парсера и запись в Neon отключены.")
+    import apify_review
+    importlib.reload(apify_review)
+    stored_token = ""
+    try:
+        stored_token = st.secrets.get("APIFY_TOKEN", "")
+    except (FileNotFoundError, KeyError):
+        pass
+    if not stored_token:
+        st.warning("Для чтения Apify добавьте APIFY_TOKEN в Secrets приложения Streamlit. Не отправляйте токен в чат.")
+    else:
+        st.success("Токен Apify найден в защищённых настройках.")
+    with st.form("apify_readonly_dataset"):
+        dataset_id = st.text_input("Dataset ID Apify", value="pHdStHh5iyTG57Uqd", max_chars=64,
+                                  help="Идентификатор уже созданного набора Apify, не API-токен.")
+        max_items = st.number_input("Максимум предложений", min_value=1, max_value=100, value=10, step=1)
+        submitted = st.form_submit_button("Загрузить существующие предложения", disabled=not bool(stored_token))
+    if submitted:
+        try:
+            items = apify_review.fetch_dataset(dataset_id, stored_token, int(max_items))
+            st.session_state["apify_review_items"] = apify_review.review_offers(items)
+        except ValueError as exc:
+            st.error(str(exc))
+    if "apify_review_items" in st.session_state:
+        offers = st.session_state["apify_review_items"]
+        st.write(f"Подходящих по формату предложений: **{len(offers)}**")
+        if offers:
+            st.dataframe(pd.DataFrame(offers), hide_index=True, width="stretch")
+            st.info("Цены не перенесены в анализатор: совпадение размера, материала, конструкции и комплектации ещё не подтверждено. Комиссия Allegro не определяется этим набором.")
+        else:
+            st.warning("Подходящих по формату предложений нет. Проверьте ID и набор данных.")
 with komertia_tab:
     from komertia_import_ui import render as render_komertia_import
     render_komertia_import()
