@@ -172,6 +172,33 @@ with apify_tab:
             st.info("Цены не перенесены в анализатор: совпадение размера, материала, конструкции и комплектации ещё не подтверждено. Комиссия Allegro не определяется этим набором.")
         else:
             st.warning("Подходящих по формату предложений нет. Проверьте ID и набор данных.")
+
+    st.divider()
+    st.subheader("Очередь товаров без цены")
+    import apify_targets
+    importlib.reload(apify_targets)
+    # The full loaded Neon frame is already in session; this section never
+    # downloads it again or writes anything back to the database.
+    unpriced = apify_targets.target_queue(st.session_state["products"])
+    st.write(f"Активных товаров без цены: **{len(unpriced)}**")
+    st.caption("Это исходный порядок позиций, не новый импорт. Неизвестные цены остаются пустыми.")
+    if unpriced:
+        st.dataframe(pd.DataFrame(unpriced).drop(columns=["_position_id"]), hide_index=True, width="stretch")
+        csv = pd.DataFrame(unpriced).drop(columns=["_position_id"]).to_csv(index=False).encode("utf-8-sig")
+        st.download_button("Скачать запросы для поиска по Allegro (CSV)", csv,
+                           file_name="allegro-unpriced-searches.csv", mime="text/csv")
+
+        if st.session_state.get("apify_review_items"):
+            offers = st.session_state["apify_review_items"]
+            suggestions = []
+            for target in unpriced:
+                suggestions.extend(apify_targets.candidate_matches(target, offers)[:3])
+            st.subheader("Предварительные совпадения с загруженным набором Apify")
+            if suggestions:
+                st.dataframe(pd.DataFrame(suggestions), hide_index=True, width="stretch")
+            else:
+                st.info("В текущем наборе Apify нет достоверных кандидатов на основе названий. Сами цены товаров не менялись.")
+            st.caption("Совпадение слов не означает идентичность товара. Ни одна цена и комиссия не сохраняются автоматически.")
 with komertia_tab:
     from komertia_import_ui import render as render_komertia_import
     render_komertia_import()
