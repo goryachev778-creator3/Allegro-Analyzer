@@ -233,17 +233,32 @@ with apify_tab:
                 st.error(str(exc))
         st.caption("Файл обрабатывается только в текущей сессии, не сохраняется в Neon. Комиссии в этом режиме не определяются.")
 
-        if st.session_state.get("apify_review_items"):
-            offers = st.session_state["apify_review_items"]
-            suggestions = []
-            for target in unpriced:
-                suggestions.extend(apify_targets.candidate_matches(target, offers)[:3])
-            st.subheader("Предварительные совпадения с загруженным набором Apify")
-            if suggestions:
-                st.dataframe(pd.DataFrame(suggestions), hide_index=True, width="stretch")
+        st.subheader("Сопоставить 5 готовых предложений Apify")
+        st.caption("Использует существующий Dataset ID, новый сбор предложений не запускается.")
+        if st.button("Проверить 5 предложений с моими товарами", key="match_existing_apify",
+                     disabled=not bool(stored_token)):
+            try:
+                # Re-read existing items so matching works even in a fresh session.
+                existing = apify_review.fetch_dataset("pHdStHh5iyTG57Uqd", stored_token, 10)
+                st.session_state["apify_review_items"] = apify_review.review_offers(existing)
+                st.session_state["apify_match_requested"] = True
+            except ValueError as exc:
+                st.session_state["apify_match_requested"] = False
+                st.error(str(exc))
+        if st.session_state.get("apify_match_requested"):
+            offers = st.session_state.get("apify_review_items", [])
+            report = free_offer_import.match_report(unpriced, offers)
+            st.write(f"Предложений Allegro: **{len(offers)}**. Предварительных совпадений: **{len(report)}**.")
+            if report:
+                report_frame = pd.DataFrame(report)
+                st.dataframe(report_frame, hide_index=True, width="stretch")
+                st.download_button("Скачать предварительные совпадения (CSV)",
+                                   report_frame.to_csv(index=False).encode("utf-8-sig"),
+                                   file_name="apify-existing-matches.csv", mime="text/csv",
+                                   key="apify_existing_matches_csv")
             else:
-                st.info("В текущем наборе Apify нет достоверных кандидатов на основе названий. Сами цены товаров не менялись.")
-            st.caption("Совпадение слов не означает идентичность товара. Ни одна цена и комиссия не сохраняются автоматически.")
+                st.info("Среди 5 предложений нет достаточно похожих товаров. Это не означает, что товаров нет на Allegro.")
+            st.caption("Сопоставление предварительное: ни цены, ни комиссии не записываются в Neon.")
 with komertia_tab:
     from komertia_import_ui import render as render_komertia_import
     render_komertia_import()
