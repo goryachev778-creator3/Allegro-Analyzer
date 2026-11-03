@@ -188,6 +188,23 @@ with apify_tab:
         st.download_button("Скачать запросы для поиска по Allegro (CSV)", csv,
                            file_name="allegro-unpriced-searches.csv", mime="text/csv")
 
+        import apify_pilot
+        importlib.reload(apify_pilot)
+        pilot = apify_pilot.pilot_queue(unpriced)
+        st.subheader("Проверенный пакет для Apify — 13 запросов")
+        st.caption("Отдельно от 82 строк. Здесь нет запуска платных задач: только проверенные поисковые запросы.")
+        st.write(f"Найдено в текущих товарах: **{len(pilot)} из 13**")
+        if pilot:
+            pilot_df = pd.DataFrame(pilot).drop(columns=["_position_id"], errors="ignore")
+            st.dataframe(pilot_df, hide_index=True, width="stretch")
+            st.download_button("Скачать 13 проверенных запросов (CSV)",
+                               pilot_df.to_csv(index=False).encode("utf-8-sig"),
+                               file_name="apify-13-checked-queries.csv", mime="text/csv",
+                               key="apify_pilot_csv")
+            st.info("Чтобы получить НОВЫЕ цены, нужен новый сбор данных Apify. Он здесь не запускается без отдельного разрешения на расходы.")
+        else:
+            st.warning("Позиции из пилотного списка не найдены — проверьте исходные номера товаров.")
+
         if st.session_state.get("apify_review_items"):
             offers = st.session_state["apify_review_items"]
             suggestions = []
