@@ -205,6 +205,34 @@ with apify_tab:
         else:
             st.warning("Позиции из пилотного списка не найдены — проверьте исходные номера товаров.")
 
+        st.subheader("Бесплатное сопоставление по файлу предложений")
+        st.caption("Загрузите CSV/JSON с названиями, ценами PLN и ссылками Allegro. Это не запускает платный поиск и не изменяет Neon.")
+        import free_offer_import
+        importlib.reload(free_offer_import)
+        free_upload = st.file_uploader("Файл предложений (CSV или JSON, до 2 МБ)",
+                                       type=["csv", "json"], key="free_allegro_offers")
+        if free_upload is not None:
+            try:
+                free_offers = free_offer_import.parse_offers(free_upload.getvalue(), free_upload.name)
+                st.write(f"Подходящих предложений в файле: **{len(free_offers)}**")
+                if free_offers:
+                    report = free_offer_import.match_report(unpriced, free_offers)
+                    st.write(f"Предварительных совпадений: **{len(report)}**")
+                    if report:
+                        report_frame = pd.DataFrame(report)
+                        st.dataframe(report_frame, hide_index=True, width="stretch")
+                        st.download_button("Скачать результаты сопоставления (CSV)",
+                                           report_frame.to_csv(index=False).encode("utf-8-sig"),
+                                           file_name="allegro-matches-for-review.csv",
+                                           mime="text/csv", key="free_allegro_matches")
+                    else:
+                        st.info("Нет совпадений по названию. Размеры и характеристики автоматически не подтверждаются.")
+                else:
+                    st.warning("Не найдены предложения с ценой PLN и ссылкой на allegro.pl/oferta/.")
+            except ValueError as exc:
+                st.error(str(exc))
+        st.caption("Файл обрабатывается только в текущей сессии, не сохраняется в Neon. Комиссии в этом режиме не определяются.")
+
         if st.session_state.get("apify_review_items"):
             offers = st.session_state["apify_review_items"]
             suggestions = []
