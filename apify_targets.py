@@ -16,7 +16,7 @@ STOPWORDS = {
     "transgraniczny", "cross", "border", "amazon", "najlepiej",
     "sprzedajaca", "sie", "kolor", "czarny", "bialy", "czarna", "biala",
 }
-DIMENSIONS = re.compile(r"(?<!\\d)\\d{1,4}(?:[.,]\\d+)?\\s*(?:cm|mm|m|kg|g|l|ml|x\\s*\\d{1,4})(?!\\w)", re.I)
+DIMENSIONS = re.compile(r"(?<!\d)\d{1,4}(?:[.,]\d+)?\s*(?:cm|mm|m|kg|g|l|ml|x\s*\d{1,4})(?!\w)", re.I)
 
 
 def words(value):
@@ -27,7 +27,7 @@ def words(value):
 
 def dimensions(value):
     txt = unicodedata.normalize("NFKD", str(value or "")).casefold()
-    return set(re.sub(r"\\s+", "", m.group()) for m in DIMENSIONS.finditer(txt))
+    return set(re.sub(r"\s+", "", m.group()) for m in DIMENSIONS.finditer(txt))
 
 
 def target_queue(frame):
