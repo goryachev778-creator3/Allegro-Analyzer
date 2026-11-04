@@ -221,6 +221,22 @@ with apify_tab:
         else:
             st.info("Ни одна из исследованных позиций сейчас не входит в очередь без цены.")
 
+        st.subheader("Итоговая проверка 41 уникального товара")
+        st.caption("Исследование 04.11.2026: 82 строки без цены включают повторные записи. Здесь показан один раз каждый товар.")
+        import market_audit_41
+        importlib.reload(market_audit_41)
+        audited = market_audit_41.audit_unpriced(unpriced)
+        if audited:
+            audited_frame = pd.DataFrame(audited)
+            leads_count = int(audited_frame["Цена конкурента brutto PLN (НЕ цена продажи)"].notna().sum())
+            st.write(f"Уникальных товаров: **{len(audited_frame)}** · Ценовых ориентиров: **{leads_count}** · Без ориентира: **{len(audited_frame)-leads_count}**")
+            st.dataframe(audited_frame, hide_index=True, width="stretch")
+            st.download_button("Скачать проверку всех 41 товаров (CSV)",
+                               audited_frame.to_csv(index=False).encode("utf-8-sig"),
+                               file_name="allegro-41-audit-2026-11-04.csv", mime="text/csv",
+                               key="market_audit_41_csv")
+            st.warning("Цены в этой таблице — найденные цены КОНКУРЕНТОВ, не подтверждённые цены наших товаров. Не заполняют Neon и не учитывают комиссию Allegro.")
+
         st.subheader("Бесплатное сопоставление по файлу предложений")
         st.caption("Загрузите CSV/JSON с названиями, ценами PLN и ссылками Allegro. Это не запускает платный поиск и не изменяет Neon.")
         import free_offer_import
