@@ -166,6 +166,34 @@ with apify_tab:
         st.warning("Для чтения Apify добавьте APIFY_TOKEN в Secrets приложения Streamlit. Не отправляйте токен в чат.")
     else:
         st.success("Токен Apify найден в защищённых настройках.")
+    st.subheader("Проверка расходов Apify без списаний")
+    st.caption("Использует только GET /v2/users/me/limits; не запускает парсер и не изменяет лимиты.")
+    if st.button("Проверить расходы и лимит Apify", disabled=not bool(stored_token),
+                 key="apify_usage_get"):
+        import apify_usage
+        importlib.reload(apify_usage)
+        try:
+            st.session_state["apify_usage_summary"] = apify_usage.fetch_limits(stored_token)
+            st.session_state.pop("apify_usage_error", None)
+        except ValueError as exc:
+            st.session_state.pop("apify_usage_summary", None)
+            st.session_state["apify_usage_error"] = str(exc)
+    if "apify_usage_error" in st.session_state:
+        st.error(st.session_state["apify_usage_error"])
+    if "apify_usage_summary" in st.session_state:
+        usage = st.session_state["apify_usage_summary"]
+        p, q, z = st.columns(3)
+        p.metric("Потрачено за цикл", f"${usage['spent']:.2f}")
+        q.metric("Месячный лимит", f"${usage['limit']:.2f}")
+        z.metric("До установленного лимита", f"${usage['headroom']:.2f}")
+        if usage["cycle_start"] and usage["cycle_end"]:
+            st.caption(f"Период Apify: {usage['cycle_start'][:10]} — {usage['cycle_end'][:10]}")
+        if usage["headroom"] < estimate["exact_cost_usd"]:
+            st.warning("Оставшегося места до лимита недостаточно для расчётного сбора 41 товара.")
+        else:
+            st.info("Месячный лимит допускает расчётную стоимость, но доступные БЕСПЛАТНЫЕ кредиты этим запросом не подтверждаются.")
+        st.caption("До лимита — это не баланс бесплатных кредитов. На платном плане расходы сверх предоплаты могут списываться отдельно.")
+
     with st.form("apify_readonly_dataset"):
         dataset_id = st.text_input("Dataset ID Apify", value="pHdStHh5iyTG57Uqd", max_chars=64,
                                   help="Идентификатор уже созданного набора Apify, не API-токен.")
