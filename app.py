@@ -205,6 +205,22 @@ with apify_tab:
         else:
             st.warning("Позиции из пилотного списка не найдены — проверьте исходные номера товаров.")
 
+        st.subheader("Найденные цены Allegro — бесплатный поиск")
+        st.caption("Снимок предложений от 04.11.2026. Это ценовые ориентиры, не подтверждённые аналоги; цены могут измениться.")
+        import free_market_evidence
+        importlib.reload(free_market_evidence)
+        market_examples = free_market_evidence.market_leads(unpriced)
+        if market_examples:
+            market_frame = pd.DataFrame(market_examples)
+            st.dataframe(market_frame, hide_index=True, width="stretch")
+            st.download_button("Скачать найденные предложения Allegro (CSV)",
+                               market_frame.to_csv(index=False).encode("utf-8-sig"),
+                               file_name="allegro-market-evidence-2026-11-04.csv",
+                               mime="text/csv", key="market_evidence_csv")
+            st.info("Сопоставление размеров, комплектации и материала ещё не подтверждено. Цены и комиссии в Neon не изменены.")
+        else:
+            st.info("Ни одна из исследованных позиций сейчас не входит в очередь без цены.")
+
         st.subheader("Бесплатное сопоставление по файлу предложений")
         st.caption("Загрузите CSV/JSON с названиями, ценами PLN и ссылками Allegro. Это не запускает платный поиск и не изменяет Neon.")
         import free_offer_import
