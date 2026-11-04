@@ -142,6 +142,19 @@ main_tab, settings_tab, komertia_tab, apify_tab = st.tabs(["Главная", "Н
 with apify_tab:
     st.subheader("Предложения Allegro из Apify")
     st.caption("Только просмотр уже собранных предложений. Запуск платного парсера и запись в Neon отключены.")
+    with st.expander("Стоимость нового сбора SilentFlow — без запуска", expanded=True):
+        import apify_costs
+        importlib.reload(apify_costs)
+        a, b = st.columns(2)
+        with a:
+            estimate_products = st.number_input("Уникальных товаров", 1, 500, 41, key="cost_products")
+        with b:
+            estimate_offers = st.number_input("Предложений на товар", 1, 100, 15, key="cost_offers")
+        estimate = apify_costs.cost_estimate(int(estimate_products), int(estimate_offers))
+        st.write(f"План: **{estimate['offers']} предложений**, ориентировочно **${estimate['cost_usd']}** за один запуск.")
+        st.caption("Тариф Free: $2,75/1 000 предложений + $0,005/запуск (04.11.2026). Личный остаток кредитов не проверен.")
+        st.caption("Бесплатный план включает до $5 кредитов в месяц, но только доступный остаток покрывает расходы. План не запускает Apify.")
+
     import apify_review
     importlib.reload(apify_review)
     stored_token = ""
