@@ -193,6 +193,37 @@ with apify_tab:
         else:
             st.info("Месячный лимит допускает расчётную стоимость, но доступные БЕСПЛАТНЫЕ кредиты этим запросом не подтверждаются.")
         st.caption("До лимита — это не баланс бесплатных кредитов. На платном плане расходы сверх предоплаты могут списываться отдельно.")
+    st.subheader("Подтверждение бесплатных кредитов")
+    st.caption("Проверка тарифного плана Free через GET /v2/users/me. Не запускает сбор.")
+    if st.button("Подтвердить бесплатные кредиты", disabled=not bool(stored_token),
+                 key="apify_confirm_free"):
+        import apify_free_credits
+        import apify_usage
+        importlib.reload(apify_free_credits)
+        importlib.reload(apify_usage)
+        try:
+            # Re-read both within one action rather than relying on stale state.
+            live_limits = apify_usage.fetch_limits(stored_token)
+            entitlement = apify_free_credits.fetch_entitlement(stored_token)
+            st.session_state["apify_verified_free"] = apify_free_credits.prepaid_status(
+                entitlement, live_limits["spent"], estimate["exact_cost_usd"])
+            st.session_state.pop("apify_verify_error", None)
+        except ValueError as exc:
+            st.session_state.pop("apify_verified_free", None)
+            st.session_state["apify_verify_error"] = str(exc)
+    if st.session_state.get("apify_verify_error"):
+        st.error(st.session_state["apify_verify_error"])
+    if "apify_verified_free" in st.session_state:
+        free_check = st.session_state["apify_verified_free"]
+        st.write(f"Тариф: **{free_check['tier']}** · Включённые кредиты: **${free_check['included']:.2f}** · Остаток по расчёту: **${free_check['remaining']:.2f}**")
+        if free_check["fits"]:
+            st.success("ПОДТВЕРЖДЕНО: тариф Free и расчётная стоимость сбора укладывается в остаток бесплатных кредитов.")
+        elif not free_check["free"]:
+            st.warning("Тариф не Free: автоматический сбор не разрешён этой проверкой.")
+        else:
+            st.warning("Остатка бесплатных кредитов недостаточно для расчётного сбора.")
+        st.caption("Расчёт основан на включённых кредитах и текущих месячных расходах. Это не подтверждение окончательной цены Actor или результатов поиска. Никаких запусков нет.")
+
 
     with st.form("apify_readonly_dataset"):
         dataset_id = st.text_input("Dataset ID Apify", value="pHdStHh5iyTG57Uqd", max_chars=64,
