@@ -166,6 +166,24 @@ with apify_tab:
         st.warning("Для чтения Apify добавьте APIFY_TOKEN в Secrets приложения Streamlit. Не отправляйте токен в чат.")
     else:
         st.success("Токен Apify найден в защищённых настройках.")
+    # Recover the user's already-finished 38-piece test by its known Run ID.
+    # This only performs GET requests; a fresh login/session does NOT re-run
+    # SilentFlow, incur a new Actor charge, or edit Neon.
+    if stored_token and not st.session_state.get("apify_pilot_autorecovered"):
+        st.session_state["apify_pilot_autorecovered"] = True
+        try:
+            import apify_capped_pilot
+            importlib.reload(apify_capped_pilot)
+            prior = apify_capped_pilot.check_pilot(stored_token, "ckenGffVKz4reZaty")
+            if prior["status"] == "SUCCEEDED" and prior["dataset"]:
+                prior_items = apify_review.fetch_dataset(prior["dataset"], stored_token, 15)
+                st.session_state["apify_review_items"] = apify_review.review_offers(prior_items)
+                st.session_state["apify_pilot_run_id"] = "ckenGffVKz4reZaty"
+                st.session_state["apify_pilot_dataset"] = prior["dataset"]
+                st.session_state["apify_pilot_status"] = "SUCCEEDED"
+                st.success(f"9 предложений из прежнего теста: фактически загружено {len(st.session_state['apify_review_items'])}. Новый парсер не запускался.")
+        except ValueError as exc:
+            st.warning("Не удалось автоматически загрузить прошлый тест Apify: " + str(exc))
     st.subheader("Проверка расходов Apify без списаний")
     st.caption("Использует только GET /v2/users/me/limits; не запускает парсер и не изменяет лимиты.")
     if st.button("Проверить расходы и лимит Apify", disabled=not bool(stored_token),
@@ -270,6 +288,7 @@ with apify_tab:
             with st.spinner("Проверка баланса Free и отправка пакета..."):
                 result = apify_batch_32.start_batch(stored_token)
             st.session_state["apify_batch_run_id"] = result["id"]
+            st.session_state["batch_recovery_run_id"] = result["id"]
             st.session_state["apify_batch_status"] = result["status"]
             st.success("Пакет отправлен. Run ID: " + result["id"])
         except ValueError as exc:
