@@ -225,6 +225,38 @@ with apify_tab:
         st.caption("Расчёт основан на включённых кредитах и текущих месячных расходах. Это не подтверждение окончательной цены Actor или результатов поиска. Никаких запусков нет.")
 
 
+    st.subheader("Пробный сбор цен — лимит $0,06")
+    st.caption("1 товар №70 (38 съёмников обшивки), максимум 15 предложений. Проверяет тариф Free и кредит прямо перед запуском. Не меняет Neon.")
+    import apify_capped_pilot
+    importlib.reload(apify_capped_pilot)
+    if st.button("Запустить тест SilentFlow (до $0,06)", key="apify_start_pilot",
+                 disabled=not bool(stored_token) or bool(st.session_state.get("apify_pilot_run_id"))):
+        try:
+            with st.spinner("Проверяю бесплатный баланс и запускаю тест..."):
+                run = apify_capped_pilot.start_pilot(stored_token)
+            st.session_state["apify_pilot_run_id"] = run["id"]
+            st.session_state["apify_pilot_status"] = run["status"]
+            st.success("Запуск принят Apify. ID: " + run["id"])
+        except ValueError as exc:
+            st.error(str(exc))
+    if st.session_state.get("apify_pilot_run_id"):
+        run_id = st.session_state["apify_pilot_run_id"]
+        st.write("Запуск:", run_id, "· Статус:", st.session_state.get("apify_pilot_status", "неизвестно"))
+        if st.button("Проверить завершение теста", key="apify_check_pilot"):
+            try:
+                result = apify_capped_pilot.check_pilot(stored_token, run_id)
+                st.session_state["apify_pilot_status"] = result["status"]
+                st.session_state["apify_pilot_dataset"] = result["dataset"]
+                if result["status"] == "SUCCEEDED" and result["dataset"]:
+                    st.session_state["apify_review_items"] = apify_review.review_offers(
+                        apify_review.fetch_dataset(result["dataset"], stored_token, 15))
+                    st.success(f"Получено {len(st.session_state['apify_review_items'])} подходящих предложений.")
+                else:
+                    st.info("Статус: " + result["status"] + ". Новых записей в Neon нет.")
+            except ValueError as exc:
+                st.error(str(exc))
+    st.caption("Повторный запуск блокируется в текущей сессии. Если запрос завершился ошибкой связи, сначала проверьте Runs в Apify, чтобы не потратить кредит дважды.")
+
     with st.form("apify_readonly_dataset"):
         dataset_id = st.text_input("Dataset ID Apify", value="pHdStHh5iyTG57Uqd", max_chars=64,
                                   help="Идентификатор уже созданного набора Apify, не API-токен.")
