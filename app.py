@@ -294,7 +294,6 @@ with apify_tab:
         except ValueError as exc:
             st.error(str(exc))
     recovered_id = st.text_input("Run ID пакета для проверки без повторного запуска",
-                                 value=st.session_state.get("apify_batch_run_id", ""),
                                  max_chars=64, key="batch_recovery_run_id")
     if recovered_id:
         st.caption("Текущий статус: " + st.session_state.get("apify_batch_status", "не проверен"))
