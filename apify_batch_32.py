@@ -1,4 +1,4 @@
-"""Single capped SilentFlow batch for 32 queryable product groups.
+"""Single capped SilentFlow batch for 31 remaining queryable product groups.
 
 Explicit on-click only. Fails closed if the user is not on the Free plan or
 prepaid credits are insufficient. No writes to Neon; all results require review.
@@ -15,7 +15,7 @@ import apify_free_credits
 import apify_batch_queries
 
 CAP = Decimal("1.60")  # pilot was capped at $0.06; combined caps < $1.70 authorization
-MAX_RESULTS = 480
+MAX_RESULTS = 465
 RUN_ID = re.compile(r"^[A-Za-z0-9]{8,64}$")
 ACTOR = "silentflow~allegro-scraper"
 
@@ -49,7 +49,7 @@ def start_batch(token):
     check_free_budget(token)
     params = urlencode({"maxItems": MAX_RESULTS, "maxTotalChargeUsd": str(CAP),
                         "restartOnError": "false"})
-    request = {"searchQueries": apify_batch_queries.queries(), "country": "pl", "maxItems": MAX_RESULTS}
+    request = {"searchQueries": [query for pos, query in apify_batch_queries.SEARCHES if pos != 70], "country": "pl", "maxItems": MAX_RESULTS}
     response = _api("https://api.apify.com/v2/acts/" + ACTOR + "/runs?" + params, token, request)
     data = response.get("data") if isinstance(response, dict) else None
     if not isinstance(data, dict) or not RUN_ID.fullmatch(str(data.get("id") or "")):
