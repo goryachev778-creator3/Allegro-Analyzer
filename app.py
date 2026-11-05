@@ -257,6 +257,56 @@ with apify_tab:
                 st.error(str(exc))
     st.caption("Повторный запуск блокируется в текущей сессии. Если запрос завершился ошибкой связи, сначала проверьте Runs в Apify, чтобы не потратить кредит дважды.")
 
+    st.subheader("Пакетный поиск оставшихся 31 товара — лимит $1,60")
+    st.caption("31 запрос по уже известным товарам, №70 повторно не ищем. Ещё 9 групп нельзя надёжно опознать. Максимум 465 предложений суммарно; распределение по запросам не гарантируется.")
+    import apify_batch_32
+    import apify_batch_queries
+    importlib.reload(apify_batch_queries)
+    importlib.reload(apify_batch_32)
+    st.info("Прежний тест №70 ограничен $0,06, новый пакет — $1,60. Сумма установленных потолков $1,66 меньше разрешённых $1,70. Старт только вручную, с повторной проверкой бесплатного тарифа.")
+    if st.button("Запустить оставшиеся 31 запрос (лимит $1,60)", key="apify_start_31",
+                 disabled=not bool(stored_token) or bool(st.session_state.get("apify_batch_run_id"))):
+        try:
+            with st.spinner("Проверка баланса Free и отправка пакета..."):
+                result = apify_batch_32.start_batch(stored_token)
+            st.session_state["apify_batch_run_id"] = result["id"]
+            st.session_state["apify_batch_status"] = result["status"]
+            st.success("Пакет отправлен. Run ID: " + result["id"])
+        except ValueError as exc:
+            st.error(str(exc))
+    recovered_id = st.text_input("Run ID пакета для проверки без повторного запуска",
+                                 value=st.session_state.get("apify_batch_run_id", ""),
+                                 max_chars=64, key="batch_recovery_run_id")
+    if recovered_id:
+        st.caption("Текущий статус: " + st.session_state.get("apify_batch_status", "не проверен"))
+        if st.button("Проверить пакет и загрузить полученные цены", key="apify_check_31",
+                     disabled=not bool(stored_token)):
+            try:
+                result = apify_batch_32.check_batch(stored_token, recovered_id)
+                st.session_state["apify_batch_run_id"] = recovered_id
+                st.session_state["apify_batch_status"] = result["status"]
+                if result["status"] == "SUCCEEDED" and result["dataset"]:
+                    raw = apify_batch_32.read_batch(stored_token, result["dataset"])
+                    st.session_state["apify_batch_report"] = apify_batch_32.batch_review(raw)
+                    st.success(f"Собрано {len(raw)} строк. Предложений для проверки: {len(st.session_state['apify_batch_report'])}.")
+                else:
+                    st.warning("Статус: " + result["status"] + ". Проверьте позднее; повторно не запускайте.")
+            except ValueError as exc:
+                st.error(str(exc))
+    if "apify_batch_report" in st.session_state:
+        result_rows = st.session_state["apify_batch_report"]
+        if result_rows:
+            report_df = pd.DataFrame(result_rows)
+            st.write(f"Предложений с определённым поисковым запросом: **{len(report_df)}**")
+            st.dataframe(report_df, hide_index=True, width="stretch")
+            st.download_button("Скачать результаты 31 запроса с категориями (CSV)",
+                               report_df.to_csv(index=False).encode("utf-8-sig"),
+                               file_name="allegro-apify-31-review.csv",
+                               mime="text/csv", key="apify_batch_31_download")
+        else:
+            st.warning("Apify не вернул предложения с распознанным searchQuery; проверьте выходной набор.")
+    st.caption("ВАЖНО: наличие categoryId и категории предложения конкурента не подтверждает комиссию нашей будущей продажи. Комиссия остаётся неизвестной до выбора точной категории своей оферты. Neon не изменяется.")
+
     with st.form("apify_readonly_dataset"):
         dataset_id = st.text_input("Dataset ID Apify", value="pHdStHh5iyTG57Uqd", max_chars=64,
                                   help="Идентификатор уже созданного набора Apify, не API-токен.")
