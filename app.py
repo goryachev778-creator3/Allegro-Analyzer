@@ -277,6 +277,23 @@ with apify_tab:
         else:
             st.warning("Подходящих по формату предложений нет. Проверьте ID и набор данных.")
 
+    if st.session_state.get("apify_review_items"):
+        import strict_38_review
+        importlib.reload(strict_38_review)
+        exact_38, other_counts, ambiguous_counts = strict_38_review.review_38_piece(
+            st.session_state["apify_review_items"])
+        with st.expander("Проверка товара №70 — только наборы из 38 элементов", expanded=True):
+            st.write(f"Кандидаты 38 шт.: **{len(exact_38)}** · Исключены: **{len(other_counts)}** · Неясно: **{len(ambiguous_counts)}**")
+            if exact_38:
+                st.dataframe(pd.DataFrame(exact_38), hide_index=True, width="stretch")
+            if other_counts:
+                st.caption("Исключённые комплектации (20, 25, 43 и другие):")
+                st.dataframe(pd.DataFrame(other_counts), hide_index=True, width="stretch")
+            if ambiguous_counts:
+                st.caption("Без подтверждённого количества в названии:")
+                st.dataframe(pd.DataFrame(ambiguous_counts), hide_index=True, width="stretch")
+            st.info("Даже 38 предметов в заголовке не доказывает одинаковые материал, цвет и комплектацию. Цена в Neon не переносится.")
+
     st.divider()
     st.subheader("Очередь товаров без цены")
     import apify_targets
