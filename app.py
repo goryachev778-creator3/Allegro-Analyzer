@@ -363,6 +363,51 @@ with apify_tab:
                        key="apify_summary_41_download")
     st.caption("Медиана — только ориентир рынка, а не готовая цена продажи. Доставка, комплектация и категория собственной оферты требуют проверки. Нулевую комиссию не подставляем.")
     st.markdown("Для расчёта точной комиссии используйте [официальный калькулятор Allegro](https://allegro.pl/kalkulator-oplat).")
+    st.subheader("Сохранение проверенных цен и комиссий в Neon")
+    st.caption("Только уже собранные предложения Apify, без нового платного поиска. Не перезаписывает товары с ранее заданной ценой/комиссией, закупку, фотографии или порядок.")
+    import apify_verified_prices
+    importlib.reload(apify_verified_prices)
+    if st.session_state.get("apify_batch_report"):
+        import apify_targets
+        importlib.reload(apify_targets)
+        all_targets = apify_targets.target_queue(st.session_state["products"])
+        verification = apify_verified_prices.build_review_rows(
+            st.session_state["products"], st.session_state["apify_batch_report"], all_targets)
+        if verification:
+            verify_frame = pd.DataFrame(verification)
+            verify_frame["Цена продажи PLN"] = pd.to_numeric(verify_frame["Цена продажи PLN"], errors="coerce")
+            verify_frame["Комиссия %"] = pd.to_numeric(verify_frame["Комиссия %"], errors="coerce")
+            st.warning("Найденные предложения — только кандидаты. Чтобы записать цену, требуется сверить фото, размер, количество и цвет; комиссию — в категории собственной оферты Allegro.")
+            st.markdown("Комиссия рассчитывается по [официальному калькулятору Allegro](https://allegro.pl/kalkulator-oplat).")
+            verified_editor = st.data_editor(
+                verify_frame,
+                hide_index=True, width="stretch", num_rows="fixed",
+                disabled=[c for c in verify_frame.columns if c not in
+                          ("Цена продажи PLN", "Комиссия %",
+                           "Товар, комплект и категория проверены",
+                           "Комиссия проверена по тарифу Allegro")],
+                key="apify_confirmed_neon_editor")
+            st.caption("Укажите выбранную рыночную цену brutto и подтверждённую комиссию. Галочки изначально выключены, перенос без них невозможен.")
+            st.download_button(
+                "Резервная копия 108 записей Neon перед изменениями (XLSX)",
+                backup_excel(st.session_state["products"]),
+                file_name="allegro-before-apify-prices.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="apify_verified_backup")
+            if st.button("Сохранить только подтверждённые цены и комиссии в Neon",
+                         key="apify_verified_save"):
+                try:
+                    new_frame, changes = apify_verified_prices.apply_verified(
+                        st.session_state["products"], verified_editor.to_dict("records"))
+                    if replace_analysis(new_frame):
+                        st.success(f"В Neon сохранены цена и комиссия для {changes} товаров. 108 записей и закупочные цены сохранены.")
+                        st.rerun()
+                except (ValueError, TypeError, IndexError) as exc:
+                    st.error("Запись отменена: " + str(exc))
+        else:
+            st.info("В полученном наборе нет ни одного предварительного кандидата с подтверждённым исходным поисковым запросом; записывать цены нельзя.")
+    else:
+        st.info("Для заполнения сначала требуется успешное чтение существующего набора Apify. Никаких новых платных запусков не требуется.")
     st.caption("ВАЖНО: наличие categoryId и категории предложения конкурента не подтверждает комиссию нашей будущей продажи. Комиссия остаётся неизвестной до выбора точной категории своей оферты. Neon не изменяется.")
 
     with st.form("apify_readonly_dataset"):
