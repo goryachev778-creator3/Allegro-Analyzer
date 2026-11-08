@@ -275,6 +275,31 @@ with apify_tab:
                 st.error(str(exc))
     st.caption("Повторный запуск блокируется в текущей сессии. Если запрос завершился ошибкой связи, сначала проверьте Runs в Apify, чтобы не потратить кредит дважды.")
 
+    # Restore the previously authorized batch automatically on the first rerun.
+    # All operations are GET; no new paid Actor run is started.
+    PREVIOUS_BATCH_RUN = "S7gv3p3u9W4CYG68I"
+    if stored_token and not st.session_state.get("apify_batch_autoload_attempted"):
+        st.session_state["apify_batch_autoload_attempted"] = True
+        st.session_state["batch_recovery_run_id"] = PREVIOUS_BATCH_RUN
+        try:
+            import apify_batch_32
+            importlib.reload(apify_batch_32)
+            old_batch = apify_batch_32.check_batch(stored_token, PREVIOUS_BATCH_RUN)
+            st.session_state["apify_batch_status"] = old_batch["status"]
+            st.session_state["apify_batch_run_id"] = PREVIOUS_BATCH_RUN
+            if old_batch["status"] in ("SUCCEEDED", "TIMED-OUT", "ABORTED", "FAILED") and old_batch["dataset"]:
+                previous_raw = apify_batch_32.read_batch(stored_token, old_batch["dataset"])
+                st.session_state["apify_batch_raw_count"] = len(previous_raw)
+                st.session_state["apify_batch_report"] = apify_batch_32.batch_review(previous_raw)
+            st.session_state.pop("apify_batch_autoload_error", None)
+        except ValueError as exc:
+            st.session_state["apify_batch_autoload_error"] = str(exc)
+    if "apify_batch_autoload_error" in st.session_state:
+        st.warning("Автоматическая загрузка прошлых результатов не удалась: " + st.session_state["apify_batch_autoload_error"])
+    if st.session_state.get("apify_batch_run_id") == PREVIOUS_BATCH_RUN:
+        st.caption("Прошлый пакет Apify: " + PREVIOUS_BATCH_RUN + " · Статус: " +
+                   st.session_state.get("apify_batch_status", "неизвестно") +
+                   " · Новых платных заданий не запускали.")
     st.subheader("Пакетный поиск оставшихся 31 товара — лимит $1,60")
     st.caption("31 запрос по уже известным товарам, №70 повторно не ищем. Ещё 9 групп нельзя надёжно опознать. Максимум 465 предложений суммарно; распределение по запросам не гарантируется.")
     import apify_batch_32
@@ -323,6 +348,21 @@ with apify_tab:
                                mime="text/csv", key="apify_batch_31_download")
         else:
             st.warning("Apify не вернул предложения с распознанным searchQuery; проверьте выходной набор.")
+    import apify_price_summary
+    importlib.reload(apify_price_summary)
+    st.subheader("Сводка цен — все 41 товарные группы")
+    current_report = st.session_state.get("apify_batch_report", [])
+    summary_rows = apify_price_summary.price_report(current_report)
+    summary_df = pd.DataFrame(summary_rows)
+    st.write(f"Получены кандидаты по: **{int((summary_df['Кандидатов по названию'] > 0).sum())} из 41 групп**. "
+             "Без данных или с несовпадающими характеристиками — остальные.")
+    st.dataframe(summary_df, hide_index=True, width="stretch")
+    st.download_button("Скачать сводку 41 товара (CSV)",
+                       summary_df.to_csv(index=False).encode("utf-8-sig"),
+                       file_name="allegro-41-price-summary.csv", mime="text/csv",
+                       key="apify_summary_41_download")
+    st.caption("Медиана — только ориентир рынка, а не готовая цена продажи. Доставка, комплектация и категория собственной оферты требуют проверки. Нулевую комиссию не подставляем.")
+    st.markdown("Для расчёта точной комиссии используйте [официальный калькулятор Allegro](https://allegro.pl/kalkulator-oplat).")
     st.caption("ВАЖНО: наличие categoryId и категории предложения конкурента не подтверждает комиссию нашей будущей продажи. Комиссия остаётся неизвестной до выбора точной категории своей оферты. Neon не изменяется.")
 
     with st.form("apify_readonly_dataset"):
