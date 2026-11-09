@@ -337,7 +337,9 @@ with apify_tab:
             except ValueError as exc:
                 st.error(str(exc))
     if "apify_batch_report" in st.session_state:
-        result_rows = st.session_state["apify_batch_report"]
+        import allegro_fee_ranges
+        importlib.reload(allegro_fee_ranges)
+        result_rows = allegro_fee_ranges.with_fee_ranges(st.session_state["apify_batch_report"])
         if result_rows:
             report_df = pd.DataFrame(result_rows)
             st.write(f"Предложений с определённым поисковым запросом: **{len(report_df)}**")
@@ -408,6 +410,7 @@ with apify_tab:
             st.info("В полученном наборе нет ни одного предварительного кандидата с подтверждённым исходным поисковым запросом; записывать цены нельзя.")
     else:
         st.info("Для заполнения сначала требуется успешное чтение существующего набора Apify. Никаких новых платных запусков не требуется.")
+    st.caption("Справочник комиссий Allegro.pl: [официальная таблица](https://help.allegro.com/pl/fees/pl?marketplaceId=allegro-pl). Показаны интервалы по главным разделам: это НЕ комиссия выбранной подкатегории.")
     st.caption("ВАЖНО: наличие categoryId и категории предложения конкурента не подтверждает комиссию нашей будущей продажи. Комиссия остаётся неизвестной до выбора точной категории своей оферты. Neon не изменяется.")
 
     with st.form("apify_readonly_dataset"):
