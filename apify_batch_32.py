@@ -128,6 +128,17 @@ def batch_review(items):
                 state = "ОТКЛОНИТЬ — не 38 предметов"
             elif unsure:
                 state = "ТРЕБУЕТ ПРОВЕРКИ — число предметов не указано"
+        # Generic word overlap must not promote a different model into the
+        # price summary (for example Vasco M4/V4/Q1 for an S80 translator).
+        required_models = {80: r"\bks[- ]?8002\b", 91: r"\bb[- ]?788\b",
+                           95: r"\b3668\b", 102: r"\bs[- ]?80\b"}
+        model = required_models.get(number)
+        if model and not re.search(model, title, re.IGNORECASE):
+            state = "ТРЕБУЕТ ПРОВЕРКИ — модель не подтверждена"
+        if number == 102 and re.search(r"\bvasco\b|\bt8\b|słuchawk", title, re.IGNORECASE):
+            state = "ОТКЛОНИТЬ — другая модель или тип переводчика"
+        if number == 105 and re.search(r"dzieci|dzieck", title, re.IGNORECASE):
+            state = "ОТКЛОНИТЬ — детская софа вместо модели 55D"
         results.append({
             "Группа товара": number, "Запрос": original,
             "Предложение Allegro": title, "Цена конкурента brutto PLN": price,
