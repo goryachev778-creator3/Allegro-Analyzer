@@ -139,6 +139,21 @@ def batch_review(items):
             state = "ОТКЛОНИТЬ — другая модель или тип переводчика"
         if number == 105 and re.search(r"dzieci|dzieck", title, re.IGNORECASE):
             state = "ОТКЛОНИТЬ — детская софа вместо модели 55D"
+        # The imported Polish names are sometimes mistranslated. Keep the
+        # original queries for mapping the existing dataset, but do not treat
+        # their word overlap as evidence of the actual Komertia product type.
+        source_type_guards = {
+            69: (r"py[łl]|kurz|odpyl|dust", "пылесборник ABS 12×4 см, не выкручиватели"),
+            71: (r"szczelin|gap", "силиконовая планка для щели плиты 63 см, не щётка"),
+            72: (r"szuflad|drawer", "самоклеящийся выдвижной ящик, не держатель губки"),
+            86: (r"silikon|silicone", "силиконовый чехол руля 38 см, не кожаная оплётка"),
+        }
+        source_guard = source_type_guards.get(number)
+        source_note = ""
+        if source_guard:
+            pattern, source_note = source_guard
+            if not re.search(pattern, title, re.IGNORECASE):
+                state = "ОТКЛОНИТЬ — другой тип или материал товара"
         results.append({
             "Группа товара": number, "Запрос": original,
             "Предложение Allegro": title, "Цена конкурента brutto PLN": price,
@@ -146,6 +161,7 @@ def batch_review(items):
             "Категория ID": str(raw.get("categoryId") or ""),
             "Ссылка Allegro": link, "Статус": state,
             "Комиссия %": None,
-            "Примечание": "Категория конкурента НЕ определяет нашу комиссию без выбора категории собственной оферты",
+            "Примечание": "Категория конкурента НЕ определяет нашу комиссию без выбора категории собственной оферты"
+                          + (". Проверено по источнику Komertia: " + source_note if source_note else ""),
         })
     return sorted(results, key=lambda r: (r["Группа товара"], r["Цена конкурента brutto PLN"]))
