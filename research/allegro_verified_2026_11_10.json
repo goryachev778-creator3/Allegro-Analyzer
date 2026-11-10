@@ -130,5 +130,5 @@
     104,
     107
   ],
-  "validation": "Checkpoint XLSX had108x32 data and125x3 photo data, all protected fields unchanged. Final post-reload export validation pending at file creation."
+  "validation": "PASS: complete XLSX exports before and after browser reload are identical. Compared with starting backup: exactly8 Allegro price cells and18 commission cells changed. All108 records (108x32), photo data (125x3), purchase costs and all Komertia fields identical."
 }
