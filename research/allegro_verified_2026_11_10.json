@@ -1,0 +1,134 @@
+{
+  "date": "2026-11-10",
+  "run_id": "S7gv3p3u9W4CYG68I",
+  "existing_offers": 165,
+  "new_apify_runs": 0,
+  "original_records": 108,
+  "active_products": 103,
+  "active_priced": 29,
+  "active_without_price": 74,
+  "fee_basis": "Gross fee including 23% VAT; base category commission, excluding optional promotion/Smart/delivery charges.",
+  "fee_source": "https://policies.allegro.com/doc/be1223a64c36f4ecfd46bdbaa00c9a646efec0129c60dfee5cde9dc59bb87cb3",
+  "saved_prices": [
+    {
+      "rows": [
+        34,
+        75
+      ],
+      "gross_pln": 19.89,
+      "fee_percent": 11.07,
+      "category": 253811,
+      "source": "https://allegro.pl/produkt/wypelniacz-szczeliny-car-seat-gap-filler-miedzy-fotelem-a-konsola-czarny-916b0bf6-cffb-4346-b7f0-30a1724b137a?offerId=18360938485",
+      "komertia": "https://www.komertia.com/product/1082182177019",
+      "evidence": "Black pair, soft leather-look foam strips, seat-belt opening, no storage pocket. Supplier photo 45x7 cm; offer photo 45x7 cm, offer text 42 cm diameter 5 cm (inconsistent seller dimensions). Closest comparable construction."
+    },
+    {
+      "rows": [
+        37,
+        78
+      ],
+      "gross_pln": 40.48,
+      "fee_percent": 15.99,
+      "category": 319667,
+      "source": "https://allegro.pl/oferta/silikonowa-mata-pod-ekspres-do-kawy-ochrona-blatu-50x40-18620616045",
+      "evidence": "40x50 cm black silicone tray, selected source variant plain tray. Same-product seller panel lists two new offers at 40.48; main seller 55.86."
+    },
+    {
+      "rows": [
+        41,
+        82
+      ],
+      "gross_pln": 40.95,
+      "fee_percent": 11.07,
+      "category": 253589,
+      "source": "https://allegro.pl/produkt/pokrowiec-na-kierownice-38-cm-wlokno-weglowe-antyposlizgowy-skora-206f815c-f281-4160-b4fa-bb4b4fa08a4c?offerId=18906816931",
+      "evidence": "Two hard clip-on carbon-pattern steering-wheel grips, 38 cm."
+    },
+    {
+      "rows": [
+        65,
+        106
+      ],
+      "gross_pln": 91.99,
+      "fee_percent": 14.145,
+      "category": 84738,
+      "source": "https://allegro.pl/oferta/lewitujacy-globus-magnetyczny-led-obrotowy-globus-interaktywny-glob-18371642499",
+      "evidence": "Blue English globe, black C-frame with LED, 3-inch class; supplier EU adapter variant. Same pictured construction."
+    }
+  ],
+  "fee_only": [
+    {
+      "rows": [
+        43,
+        44,
+        45,
+        49,
+        84,
+        85,
+        86,
+        90
+      ],
+      "fee_percent": 11.07,
+      "category_by_rows": {
+        "43": 253811,
+        "44": 253811,
+        "45": 253589,
+        "49": 253811,
+        "84": 253811,
+        "85": 253811,
+        "86": 253589,
+        "90": 253811
+      }
+    },
+    {
+      "rows": [
+        67,
+        108
+      ],
+      "fee_percent": 14.145,
+      "category": 93708
+    }
+  ],
+  "unconfirmed_reasons": {
+    "69": "Actually ABS drilling dust collector/guide 12x4 cm. Existing Apify extractor tools are wrong product type; ordinary-search candidates also different designs.",
+    "70": "Source 38-piece red trim set PP; reviewed Allegro 38-piece blue case ABS. Material differs.",
+    "71": "Actually silicone stove gap strip 63 cm. Scraped brushes wrong type. Ordinary-search STOVGAP is steel telescopic pair; other silicone packs need quantity/length verification.",
+    "72": "Actually small adhesive under-desk drawer model1779; scraped sponge holders wrong. Ordinary search finds drawers; source exact dimensions/material still not established.",
+    "73": "Supplier raised rotating ribbed tray 24.5x8 cm. Reviewed Allegro PET23x8.5 and flat-bottom organizers different construction.",
+    "76": "Source silicone pair; reviewed offer18820619661 EVA. Do not apply 26 PLN.",
+    "77": "Source running vest-style20L pack; ordinary20L backpacks in dataset different construction.",
+    "80": "KS8002 solar/crank COB lantern exact model not confirmed.",
+    "86": "Source silicone raised massage-pattern38cm cover. Scraped leather covers wrong; searched silicone alternatives differ pattern or omit dimensions.",
+    "87": "Photo indicates full rear-seat organizer; dataset tissue box search wrong type.",
+    "90": "Polyester/memory-foam adjustable lumbar cushion with adjustment plate. Ordinary lumbar cushions not same adjustment design.",
+    "91": "B788 vacuum backpack without pump. COMPRESA/other models with pump unsuitable.",
+    "94": "Identified ABS 100000RPM gun-style air duster SZ-LB08-I500326895 with five tips. Reviewed Fugert different body; exact set not confirmed.",
+    "95": "3668 cordless inflator exact model unconfirmed.",
+    "96": "Source mini precision electric screwdriver5V, package20.5x9.5x3.5cm. Reviewed other screwdriver kits differ; accessory count not confirmed.",
+    "102": "S80 exact version not confirmed; Vasco,T8,headphones wrong model/type.",
+    "105": "55D compression sofa; child sofas rejected; exact dimensions of original single variant unresolved.",
+    "108": "WEISHIDE50-300x ABS with phone clip/lanyard. Found JHC45 PLN same WEISHIDE body but package clip inclusion not explicitly confirmed; fee only saved."
+  },
+  "still_needs_price_verification": [
+    68,
+    74,
+    79,
+    81,
+    83,
+    84,
+    85,
+    88,
+    89,
+    92,
+    93,
+    97,
+    98,
+    99,
+    100,
+    101,
+    103,
+    104,
+    107
+  ],
+  "validation": "Checkpoint XLSX had108x32 data and125x3 photo data, all protected fields unchanged. Final post-reload export validation pending at file creation."
+}
