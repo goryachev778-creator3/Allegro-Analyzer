@@ -5,8 +5,8 @@
   "new_apify_runs": 0,
   "original_records": 108,
   "active_products": 103,
-  "active_priced": 31,
-  "active_without_price": 72,
+  "active_priced": 33,
+  "active_without_price": 70,
   "fee_basis": "Gross fee including 23% VAT; base category commission, excluding optional promotion/Smart/delivery charges.",
   "fee_source": "https://policies.allegro.com/doc/be1223a64c36f4ecfd46bdbaa00c9a646efec0129c60dfee5cde9dc59bb87cb3",
   "saved_prices": [
@@ -66,6 +66,19 @@
       "source": "https://allegro.pl/produkt/silikonowa-oslona-przeciwbryzgowa-do-zlewu-do-kuchni-i-lazienki-mocna-bezowa-0108b1e7-cc81-4010-a872-7fe46ebb7443?offerId=18644103760",
       "komertia": "https://www.komertia.com/product/952935282751",
       "evidence": "Source truncated variant prefix uniquely matches first grey 52x4.5x7.2cm variant. Silicone one-piece splash barrier with suction cups; Allegro same dimensions, material, suction construction and one piece. Comparable offer beige rather than grey. Live gross price75.67 on2026-11-11 (cached search55.41 rejected as outdated)."
+    },
+    {
+      "rows": [
+        51,
+        92
+      ],
+      "gross_pln": 124.99,
+      "fee_percent": 12.3,
+      "category": 316736,
+      "source": "https://allegro.pl/produkt/szczotka-do-rusztow-druciana-bedee-42-cm-4b1c3538-c730-4d53-94da-ca8c2e3cbe70",
+      "offer_id": "18927745298",
+      "komertia": "https://www.komertia.com/product/1058441620732",
+      "evidence": "Both photos same folding electric wire roller brush with splash guard, abrasive roller, gloves and USB cable. Source PP handle/steel wire,2600mAh,42x14x8cm box. Offer2600mAh,42cm,three speeds300-450rpm,180degree head. Live124.99PLN Nov11."
     }
   ],
   "fee_only": [
@@ -115,6 +128,14 @@
       ],
       "fee_percent": 7.38,
       "category": 14310
+    },
+    {
+      "rows": [
+        66,
+        107
+      ],
+      "fee_percent": 14.145,
+      "category": 93706
     }
   ],
   "unconfirmed_reasons": {
@@ -128,6 +149,7 @@
     "77": "Source running vest-style20L pack; ordinary20L backpacks in dataset different construction.",
     "79": "Source Alertsync088 black2000mAh ABS,13cm,289g,USB-C,AM/FM/WB. Reviewed catalog3e113a1c offers80,82.97,91.11 have different speaker grille and do not establish dimensions; no price saved. Radio category fee6%net confirmed.",
     "80": "KS8002 solar/crank COB lantern exact model not confirmed.",
+    "81": "Full five-seat leather-look memory-foam Comfort kit; found ordinary covers/seat pads do not confirm same padding and full enclosure.",
     "83": "Actually29x16x10cm leather-look armrest cushion with charging,cup holders and star projector. Search finds regular USB armrests or separate star projectors, not this integrated construction.",
     "86": "Source silicone raised massage-pattern38cm cover. Scraped leather covers wrong; searched silicone alternatives differ pattern or omit dimensions.",
     "87": "Photo indicates full rear-seat organizer; dataset tissue box search wrong type.",
@@ -135,29 +157,27 @@
     "89": "Source acrylic-surface padded seat-bottom cover, silk-cotton fill; not full leather seat set. No verified matching size/cover construction.",
     "90": "Polyester/memory-foam adjustable lumbar cushion with adjustment plate. Ordinary lumbar cushions not same adjustment design.",
     "91": "B788 vacuum backpack without pump. COMPRESA/other models with pump unsuitable.",
-    "92": "Source folding electric grill brush PP/steel,2600mAh,box42x14x8. Reviewed Allegro18877684147 is2000mAh with gloves; not equivalent battery/package.",
     "93": "Source8-arm folding shoe dryer150W220V timer. Search results2/4/6-arm versions differ capacity.",
     "94": "Identified ABS 100000RPM gun-style air duster SZ-LB08-I500326895 with five tips. Reviewed Fugert different body; exact set not confirmed.",
     "95": "3668 cordless inflator exact model unconfirmed.",
     "96": "Source mini precision electric screwdriver5V, package20.5x9.5x3.5cm. Reviewed other screwdriver kits differ; accessory count not confirmed.",
     "97": "Source grey ABS6000mAh LED shower with2m hose,3 suction cups,washer pair,holder,USB-C,bath puff,mesh bag. Reviewed137PLN offer includes20Lbucket;142.02 offer extra spray head;89.99 green set dimensions not established. Fee only saved.",
+    "98": "Original variant truncated; cannot distinguish bare tool,1/2 batteries,4/16 accessories among supplier variants.",
+    "99": "Source kit includes large hooked slide hammer,T-slide,orange lever,bridge,glue gun,tabs and bag; reviewed63pcAllegro12126413340 lacks large hook and orange/bridge tools.",
+    "100": "Standard brushed black3600mAh vacuum with floor brush/bag. Supplier also lists brushless variants; matching standard accessory set not confirmed.",
+    "101": "CY03max black charging-case variant,PC145x50x150mm,290mAh,8MP camera. Exact model not found in ordinary indexed Allegro search; audio-only glasses unsuitable.",
     "102": "S80 exact version not confirmed; Vasco,T8,headphones wrong model/type.",
+    "103": "Actual product carDVR/radar detector,5-inch1080p despite4K title. Deluxe front+rear camera; original memory-card variant truncated. Existing robot-dog results invalid; matcher corrected.",
+    "104": "A911 ABS180x100x90mm,1000-1200mAh,rectangularRGBclock/speaker/Qi charger. ReviewedG-shapedZG03 and roundedYZ6b differ body/features.",
     "105": "55D compression sofa; child sofas rejected; exact dimensions of original single variant unresolved.",
+    "107": "Plastic kids telescope30/60x500mm with upgraded astrolabe/compass,solar filter/glasses,phoneholder. ReviewedES0028 uses alloy body/1.3mtripod and omits upgraded kit. Fee only.",
     "108": "WEISHIDE50-300x ABS with phone clip/lanyard. Found JHC45 PLN same WEISHIDE body but package clip inclusion not explicitly confirmed; fee only saved."
   },
   "still_needs_price_verification": [
-    81,
     84,
-    85,
-    98,
-    99,
-    100,
-    101,
-    103,
-    104,
-    107
+    85
   ],
   "validation": "PASS: complete XLSX exports before and after browser reload are identical. Compared with starting backup: exactly8 Allegro price cells and18 commission cells changed. All108 records (108x32), photo data (125x3), purchase costs and all Komertia fields identical.",
   "last_review_date": "2026-11-11",
-  "validation_2026_11_11": "Checkpoint: first price pair and shower fees unchanged after reload (complete workbook both sheets equal). Second radio fee pair pending final reload validation."
+  "validation_2026_11_11": "108 records preserved; only14 price/fee cells differ from baseline. Photo sheet125x3 identical; all other source,purchase,Komertia columns unchanged. Complete workbook before/after final reload equal. Active103,priced33,withoutprice70. Four newly priced rows33,74,51,92. No new Apify runs."
 }
