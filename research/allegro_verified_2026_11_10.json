@@ -5,8 +5,8 @@
   "new_apify_runs": 0,
   "original_records": 108,
   "active_products": 103,
-  "active_priced": 29,
-  "active_without_price": 74,
+  "active_priced": 31,
+  "active_without_price": 72,
   "fee_basis": "Gross fee including 23% VAT; base category commission, excluding optional promotion/Smart/delivery charges.",
   "fee_source": "https://policies.allegro.com/doc/be1223a64c36f4ecfd46bdbaa00c9a646efec0129c60dfee5cde9dc59bb87cb3",
   "saved_prices": [
@@ -54,6 +54,18 @@
       "category": 84738,
       "source": "https://allegro.pl/oferta/lewitujacy-globus-magnetyczny-led-obrotowy-globus-interaktywny-glob-18371642499",
       "evidence": "Blue English globe, black C-frame with LED, 3-inch class; supplier EU adapter variant. Same pictured construction."
+    },
+    {
+      "rows": [
+        33,
+        74
+      ],
+      "gross_pln": 75.67,
+      "fee_percent": 20.91,
+      "category": 15974,
+      "source": "https://allegro.pl/produkt/silikonowa-oslona-przeciwbryzgowa-do-zlewu-do-kuchni-i-lazienki-mocna-bezowa-0108b1e7-cc81-4010-a872-7fe46ebb7443?offerId=18644103760",
+      "komertia": "https://www.komertia.com/product/952935282751",
+      "evidence": "Source truncated variant prefix uniquely matches first grey 52x4.5x7.2cm variant. Silicone one-piece splash barrier with suction cups; Allegro same dimensions, material, suction construction and one piece. Comparable offer beige rather than grey. Live gross price75.67 on2026-11-11 (cached search55.41 rejected as outdated)."
     }
   ],
   "fee_only": [
@@ -87,9 +99,26 @@
       ],
       "fee_percent": 14.145,
       "category": 93708
+    },
+    {
+      "rows": [
+        56,
+        97
+      ],
+      "fee_percent": 14.145,
+      "category": 258166
+    },
+    {
+      "rows": [
+        38,
+        79
+      ],
+      "fee_percent": 7.38,
+      "category": 14310
     }
   ],
   "unconfirmed_reasons": {
+    "68": "Supplier product repeatedly shows loading screen after one reload; exact construction/specifications not established.",
     "69": "Actually ABS drilling dust collector/guide 12x4 cm. Existing Apify extractor tools are wrong product type; ordinary-search candidates also different designs.",
     "70": "Source 38-piece red trim set PP; reviewed Allegro 38-piece blue case ABS. Material differs.",
     "71": "Actually silicone stove gap strip 63 cm. Scraped brushes wrong type. Ordinary-search STOVGAP is steel telescopic pair; other silicone packs need quantity/length verification.",
@@ -97,31 +126,29 @@
     "73": "Supplier raised rotating ribbed tray 24.5x8 cm. Reviewed Allegro PET23x8.5 and flat-bottom organizers different construction.",
     "76": "Source silicone pair; reviewed offer18820619661 EVA. Do not apply 26 PLN.",
     "77": "Source running vest-style20L pack; ordinary20L backpacks in dataset different construction.",
+    "79": "Source Alertsync088 black2000mAh ABS,13cm,289g,USB-C,AM/FM/WB. Reviewed catalog3e113a1c offers80,82.97,91.11 have different speaker grille and do not establish dimensions; no price saved. Radio category fee6%net confirmed.",
     "80": "KS8002 solar/crank COB lantern exact model not confirmed.",
+    "83": "Actually29x16x10cm leather-look armrest cushion with charging,cup holders and star projector. Search finds regular USB armrests or separate star projectors, not this integrated construction.",
     "86": "Source silicone raised massage-pattern38cm cover. Scraped leather covers wrong; searched silicone alternatives differ pattern or omit dimensions.",
     "87": "Photo indicates full rear-seat organizer; dataset tissue box search wrong type.",
+    "88": "Source passive rattan-surface seat-only cushion coffee colour,synthetic fibre fill; not electric cooling mat. Reviewed bead/wood mats differ material and construction; exact dimensions unresolved.",
+    "89": "Source acrylic-surface padded seat-bottom cover, silk-cotton fill; not full leather seat set. No verified matching size/cover construction.",
     "90": "Polyester/memory-foam adjustable lumbar cushion with adjustment plate. Ordinary lumbar cushions not same adjustment design.",
     "91": "B788 vacuum backpack without pump. COMPRESA/other models with pump unsuitable.",
+    "92": "Source folding electric grill brush PP/steel,2600mAh,box42x14x8. Reviewed Allegro18877684147 is2000mAh with gloves; not equivalent battery/package.",
+    "93": "Source8-arm folding shoe dryer150W220V timer. Search results2/4/6-arm versions differ capacity.",
     "94": "Identified ABS 100000RPM gun-style air duster SZ-LB08-I500326895 with five tips. Reviewed Fugert different body; exact set not confirmed.",
     "95": "3668 cordless inflator exact model unconfirmed.",
     "96": "Source mini precision electric screwdriver5V, package20.5x9.5x3.5cm. Reviewed other screwdriver kits differ; accessory count not confirmed.",
+    "97": "Source grey ABS6000mAh LED shower with2m hose,3 suction cups,washer pair,holder,USB-C,bath puff,mesh bag. Reviewed137PLN offer includes20Lbucket;142.02 offer extra spray head;89.99 green set dimensions not established. Fee only saved.",
     "102": "S80 exact version not confirmed; Vasco,T8,headphones wrong model/type.",
     "105": "55D compression sofa; child sofas rejected; exact dimensions of original single variant unresolved.",
     "108": "WEISHIDE50-300x ABS with phone clip/lanyard. Found JHC45 PLN same WEISHIDE body but package clip inclusion not explicitly confirmed; fee only saved."
   },
   "still_needs_price_verification": [
-    68,
-    74,
-    79,
     81,
-    83,
     84,
     85,
-    88,
-    89,
-    92,
-    93,
-    97,
     98,
     99,
     100,
@@ -130,5 +157,7 @@
     104,
     107
   ],
-  "validation": "PASS: complete XLSX exports before and after browser reload are identical. Compared with starting backup: exactly8 Allegro price cells and18 commission cells changed. All108 records (108x32), photo data (125x3), purchase costs and all Komertia fields identical."
+  "validation": "PASS: complete XLSX exports before and after browser reload are identical. Compared with starting backup: exactly8 Allegro price cells and18 commission cells changed. All108 records (108x32), photo data (125x3), purchase costs and all Komertia fields identical.",
+  "last_review_date": "2026-11-11",
+  "validation_2026_11_11": "Checkpoint: first price pair and shower fees unchanged after reload (complete workbook both sheets equal). Second radio fee pair pending final reload validation."
 }
