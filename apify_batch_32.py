@@ -144,6 +144,8 @@ def batch_review(items):
         # their word overlap as evidence of the actual Komertia product type.
         source_type_guards = {
             69: (r"py[łl]|kurz|odpyl|dust", "пылесборник ABS 12×4 см, не выкручиватели"),
+            74: (r"przeciwbryzg|splash|barier", "силиконовая перегородка для мойки 52×4,5×7,2 см, не сливная пробка"),
+            103: (r"rejestrat|dash[ -]?cam|kamer.{0,30}samoch|samoch.{0,30}kamer", "автомобильный видеорегистратор с детектором радаров, не робот-собака"),
             71: (r"szczelin|gap", "силиконовая планка для щели плиты 63 см, не щётка"),
             72: (r"szuflad|drawer", "самоклеящийся выдвижной ящик, не держатель губки"),
             86: (r"silikon|silicone", "силиконовый чехол руля 38 см, не кожаная оплётка"),
