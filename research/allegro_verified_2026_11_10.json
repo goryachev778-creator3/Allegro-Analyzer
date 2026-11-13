@@ -5,8 +5,8 @@
   "new_apify_runs": 0,
   "original_records": 108,
   "active_products": 103,
-  "active_priced": 33,
-  "active_without_price": 70,
+  "active_priced": 37,
+  "active_without_price": 66,
   "fee_basis": "Gross fee including 23% VAT; base category commission, excluding optional promotion/Smart/delivery charges.",
   "fee_source": "https://policies.allegro.com/doc/be1223a64c36f4ecfd46bdbaa00c9a646efec0129c60dfee5cde9dc59bb87cb3",
   "saved_prices": [
@@ -79,6 +79,32 @@
       "offer_id": "18927745298",
       "komertia": "https://www.komertia.com/product/1058441620732",
       "evidence": "Both photos same folding electric wire roller brush with splash guard, abrasive roller, gloves and USB cable. Source PP handle/steel wire,2600mAh,42x14x8cm box. Offer2600mAh,42cm,three speeds300-450rpm,180degree head. Live124.99PLN Nov11."
+    },
+    {
+      "rows": [
+        61,
+        102
+      ],
+      "gross_pln": 140.43,
+      "fee_percent": 9.84,
+      "category": 14202,
+      "source": "https://allegro.pl/produkt/translator-138-tlumaczenia-online-i-17-tlumaczenia-offline-122x47x14-2mm-b1561f32-d44b-4fed-a025-d181234ca57c?offerId=18954592219",
+      "komertia": "https://www.komertia.com/product/899591839948",
+      "evidence": "Black S80,ABS122x47x14.2mm,78g,Android,2-inch touch display,matching three-button body and camera. Supplier package translator,cable,instructions; comparable adds lanyard. New sagu20 offer140.43PLN liveNov13. Lower101.53 offers use52PLNdelivery; selected ordinary13PLNdelivery offer. No delivery added to table.",
+      "verified_date": "2026-11-13"
+    },
+    {
+      "rows": [
+        55,
+        96
+      ],
+      "gross_pln": 69.99,
+      "fee_percent": 11.07,
+      "category": 147661,
+      "source": "https://allegro.pl/produkt/wkretak-akumulatorowy-nobitech-zestaw-46-elementow-z-koncowka-magnetyczna-99625d3b-b942-497b-9840-e3bc55cebdb2?offerId=17366915965",
+      "komertia": "https://www.komertia.com/product/1031569564052",
+      "evidence": "Same photographed cylindrical USB-C3.7V precision screwdriver,three LED direction indicators,two buttons,38bits with exactly matching sizes,6plasticopeningpicks,cable,case withmagnetizer/demagnetizer. Supplier package20.5x9.5x3.5cm;offer case20.1x8.1cm(about21x8),150/156mmdriver. Comparable grey versus source black. New NobitechES10069.99PLN liveNov13.",
+      "verified_date": "2026-11-13"
     }
   ],
   "fee_only": [
@@ -139,10 +165,10 @@
     }
   ],
   "unconfirmed_reasons": {
-    "68": "Supplier product repeatedly shows loading screen after one reload; exact construction/specifications not established.",
+    "68": "Nov13 supplier still shows product loading after single reload; exact dimensions and construction not retrievable.",
     "69": "Actually ABS drilling dust collector/guide 12x4 cm. Existing Apify extractor tools are wrong product type; ordinary-search candidates also different designs.",
     "70": "Source 38-piece red trim set PP; reviewed Allegro 38-piece blue case ABS. Material differs.",
-    "71": "Actually silicone stove gap strip 63 cm. Scraped brushes wrong type. Ordinary-search STOVGAP is steel telescopic pair; other silicone packs need quantity/length verification.",
+    "71": "Nov13 exact63x5.5x1cm silicone Allegro19039847780 contains2 strips for38.88PLN; supplier original is one63cm strip. No single-unit retail price confirmed; two-pack price not copied.",
     "72": "Actually small adhesive under-desk drawer model1779; scraped sponge holders wrong. Ordinary search finds drawers; source exact dimensions/material still not established.",
     "73": "Supplier raised rotating ribbed tray 24.5x8 cm. Reviewed Allegro PET23x8.5 and flat-bottom organizers different construction.",
     "76": "Source silicone pair; reviewed offer18820619661 EVA. Do not apply 26 PLN.",
@@ -151,33 +177,32 @@
     "80": "KS8002 solar/crank COB lantern exact model not confirmed.",
     "81": "Full five-seat leather-look memory-foam Comfort kit; found ordinary covers/seat pads do not confirm same padding and full enclosure.",
     "83": "Actually29x16x10cm leather-look armrest cushion with charging,cup holders and star projector. Search finds regular USB armrests or separate star projectors, not this integrated construction.",
+    "84": "Source selected black lumbar pillow photo40x33x8cm,synthetic fabric/memoryfoam,curvedlobes. IndexedQMED40x33 and othercushions do not confirm same shape/thickness. No price copied.",
+    "85": "Source black neck pillow30x20x12cm,synthetic fabric/memoryfoam. Indexed exact-size productdcea3c43-afd6-45b3-9c9d-42a95d9bf7f9 returns404 onNov13. Ordinary Allegro search returned other shapes/sizes, no confirmed active analogue.",
     "86": "Source silicone raised massage-pattern38cm cover. Scraped leather covers wrong; searched silicone alternatives differ pattern or omit dimensions.",
-    "87": "Photo indicates full rear-seat organizer; dataset tissue box search wrong type.",
+    "87": "Corrected previous photo interpretation: source is compact U-cut hanging organizer with two transparent phonepockets,cupholder,tissuepocket,black leatherlook; NO foldingtable. Reviewed tableorganizers and hardtissueboxes not same construction. Exact dimensions not established.",
     "88": "Source passive rattan-surface seat-only cushion coffee colour,synthetic fibre fill; not electric cooling mat. Reviewed bead/wood mats differ material and construction; exact dimensions unresolved.",
     "89": "Source acrylic-surface padded seat-bottom cover, silk-cotton fill; not full leather seat set. No verified matching size/cover construction.",
     "90": "Polyester/memory-foam adjustable lumbar cushion with adjustment plate. Ordinary lumbar cushions not same adjustment design.",
     "91": "B788 vacuum backpack without pump. COMPRESA/other models with pump unsuitable.",
     "93": "Source8-arm folding shoe dryer150W220V timer. Search results2/4/6-arm versions differ capacity.",
     "94": "Identified ABS 100000RPM gun-style air duster SZ-LB08-I500326895 with five tips. Reviewed Fugert different body; exact set not confirmed.",
-    "95": "3668 cordless inflator exact model unconfirmed.",
-    "96": "Source mini precision electric screwdriver5V, package20.5x9.5x3.5cm. Reviewed other screwdriver kits differ; accessory count not confirmed.",
+    "95": "Nov13 foundCZK3668 Allegro18314390246(4000mAh,13.7cm,121.99PLN),but supplier card911800196831 remains loading after one reload. Original3668 variant battery/kit cannot be corroborated; no price copied.",
     "97": "Source grey ABS6000mAh LED shower with2m hose,3 suction cups,washer pair,holder,USB-C,bath puff,mesh bag. Reviewed137PLN offer includes20Lbucket;142.02 offer extra spray head;89.99 green set dimensions not established. Fee only saved.",
     "98": "Original variant truncated; cannot distinguish bare tool,1/2 batteries,4/16 accessories among supplier variants.",
     "99": "Source kit includes large hooked slide hammer,T-slide,orange lever,bridge,glue gun,tabs and bag; reviewed63pcAllegro12126413340 lacks large hook and orange/bridge tools.",
     "100": "Standard brushed black3600mAh vacuum with floor brush/bag. Supplier also lists brushless variants; matching standard accessory set not confirmed.",
     "101": "CY03max black charging-case variant,PC145x50x150mm,290mAh,8MP camera. Exact model not found in ordinary indexed Allegro search; audio-only glasses unsuitable.",
-    "102": "S80 exact version not confirmed; Vasco,T8,headphones wrong model/type.",
     "103": "Actual product carDVR/radar detector,5-inch1080p despite4K title. Deluxe front+rear camera; original memory-card variant truncated. Existing robot-dog results invalid; matcher corrected.",
     "104": "A911 ABS180x100x90mm,1000-1200mAh,rectangularRGBclock/speaker/Qi charger. ReviewedG-shapedZG03 and roundedYZ6b differ body/features.",
     "105": "55D compression sofa; child sofas rejected; exact dimensions of original single variant unresolved.",
     "107": "Plastic kids telescope30/60x500mm with upgraded astrolabe/compass,solar filter/glasses,phoneholder. ReviewedES0028 uses alloy body/1.3mtripod and omits upgraded kit. Fee only.",
     "108": "WEISHIDE50-300x ABS with phone clip/lanyard. Found JHC45 PLN same WEISHIDE body but package clip inclusion not explicitly confirmed; fee only saved."
   },
-  "still_needs_price_verification": [
-    84,
-    85
-  ],
+  "still_needs_price_verification": [],
   "validation": "PASS: complete XLSX exports before and after browser reload are identical. Compared with starting backup: exactly8 Allegro price cells and18 commission cells changed. All108 records (108x32), photo data (125x3), purchase costs and all Komertia fields identical.",
-  "last_review_date": "2026-11-11",
-  "validation_2026_11_11": "108 records preserved; only14 price/fee cells differ from baseline. Photo sheet125x3 identical; all other source,purchase,Komertia columns unchanged. Complete workbook before/after final reload equal. Active103,priced33,withoutprice70. Four newly priced rows33,74,51,92. No new Apify runs."
+  "last_review_date": "2026-11-13",
+  "validation_2026_11_11": "108 records preserved; only14 price/fee cells differ from baseline. Photo sheet125x3 identical; all other source,purchase,Komertia columns unchanged. Complete workbook before/after final reload equal. Active103,priced33,withoutprice70. Four newly priced rows33,74,51,92. No new Apify runs.",
+  "validation_2026_11_13": "PASS:4 new price rows55,61,96,102;2 commission cells55,96. Exactly6 changedcells versusNov13baseline. Both worksheets equal before/after final reload.108x32source records and125x3photo data unchanged except authorizedprice/fee cells. Active103,priced37,withoutprice66. Apify not called. Unconfirmed reasons cover33 canonical groups(duplicate counterpart index-41).",
+  "fee_source_current": "https://policies.allegro.com/doc/b9b01adcea5ce4104796e801719b63720dfcf1af4e6686696cf5d6b803465902"
 }
