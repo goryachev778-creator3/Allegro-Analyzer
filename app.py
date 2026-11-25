@@ -59,6 +59,20 @@ def save_analysis(frame):
 # Every rerun performs a read-only preflight, including when a session previously
 # loaded products. Losing Neon access must immediately disable *all* editing.
 from neon_health import check_neon_health
+
+# Share a bounded in-memory snapshot across browser sessions. A fresh Neon
+# fingerprint is still checked on every rerun, so stale data is never used
+# after another editor changes the stored analysis. Nothing is cached to disk.
+@st.cache_data(ttl=900, max_entries=2, show_spinner=False)
+def shared_analysis_snapshot(snapshot_signature, connection_identity):
+    return load_analysis()
+
+def neon_connection_identity():
+    # A one-way fingerprint partitions cache entries across secret rotations.
+    import hashlib
+    from storage import external_url
+    return hashlib.sha256(str(external_url() or "").encode("utf-8")).hexdigest()
+
 neon_status = check_neon_health()
 st.session_state["neon_verified"] = neon_status["status"] == "OK"
 st.session_state["storage_ready"] = False
@@ -80,7 +94,7 @@ else:
             and st.session_state.get("analysis_expected_hash") is not None
         )
         if not has_cached:
-            restored = load_analysis()
+            restored = shared_analysis_snapshot(snapshot_signature, neon_connection_identity())
             if restored is None or restored.empty:
                 raise RuntimeError("В Neon отсутствует рабочий анализ. Не создавайте новую таблицу.")
             if len(restored) != neon_status["positions"]:
@@ -895,9 +909,14 @@ with main_tab:
     if filtered:
         import hashlib
         editor_key += "_" + hashlib.sha256(str((search, statuses, selected_order)).encode()).hexdigest()[:12]
-    visible_edits = st.data_editor(profitability_style(editor_frame), column_order=column_order, column_config=config,
-        disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Партия", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
-        num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
+    # Editing 108 photo-rich records used to issue a complete Neon JSON write
+    # for every cell edit. A form commits a batch once on explicit approval.
+    st.caption("Изменяйте несколько цен и комиссий сразу. Для записи нажмите «Сохранить изменения» — до нажатия база не меняется.")
+    with st.form("allegro_editor_batch", clear_on_submit=False):
+        visible_edits = st.data_editor(profitability_style(editor_frame), column_order=column_order, column_config=config,
+            disabled=(["Комиссия PLN"] if product_archive.enabled(working) else []) + ["№", PHOTO, "Produkt", "Wariant", "Партия", "Прибыль PLN", "Маржа %", "Статус", "_position_id"],
+            num_rows="fixed" if filtered else "dynamic", hide_index=True, row_height=38, height=600, width="stretch", key=editor_key)
+        submit_editor_changes = st.form_submit_button("Сохранить изменения", type="primary")
     changed = visible_edits.drop(columns=["№", "Прибыль PLN", "Маржа %", "Статус"], errors="ignore")
     if "Партия" not in working:
         changed = changed.drop(columns=["Партия"], errors="ignore")
@@ -916,10 +935,14 @@ with main_tab:
         edited = changed.reset_index(drop=True)
     # Never rewrite the large JSON analysis merely because Streamlit reruns.
     # Preserve unchanged photos, order, prices and IDs; write only actual edits.
-    if not edited.equals(working):
+    if submit_editor_changes and not edited.equals(working):
         if replace_analysis(edited):
             st.rerun()
         # Save failed: do not treat the unsaved editor frame as committed data.
+        edited = working.copy()
+    elif not submit_editor_changes:
+        # Edits remain in the form until Save; never calculate or write them
+        # as if they were committed.
         edited = working.copy()
     if edited.empty:
         st.info("Добавьте товар.")
